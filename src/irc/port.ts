@@ -11,22 +11,24 @@ export interface IrcMember {
   prefix: string;
 }
 
+interface TrackedIdentity {
+  identity: string;
+  mask: string | undefined;
+}
+
 export class IrcIdentityTracker {
-  readonly #byNick = new Map<string, string>();
+  readonly #byNick = new Map<string, TrackedIdentity>();
   #sequence = 0;
   constructor(private readonly fold: (nick: string) => string) {}
   resolve(nick: string, mask?: { user: string; host: string }): string {
     const key = this.fold(nick);
+    const maskKey = identityMask(mask);
     const existing = this.#byNick.get(key);
-    if (existing !== undefined) return existing;
-    const base =
-      mask === undefined
-        ? `nick:${key}`
-        : `${mask.user}@${mask.host}`
-            .normalize("NFC")
-            .toLocaleLowerCase("en-US");
+    if (existing !== undefined && existing.mask === maskKey)
+      return existing.identity;
+    const base = maskKey === undefined ? `nick:${key}` : maskKey;
     const identity = `${base}#${++this.#sequence}`;
-    this.#byNick.set(key, identity);
+    this.#byNick.set(key, { identity, mask: maskKey });
     return identity;
   }
   rename(
@@ -35,15 +37,31 @@ export class IrcIdentityTracker {
     mask?: { user: string; host: string },
   ): string {
     const previousKey = this.fold(previousNick);
-    const identity =
-      this.#byNick.get(previousKey) ?? this.resolve(previousNick, mask);
+    const existing = this.#byNick.get(previousKey);
+    const identity = existing?.identity ?? this.resolve(previousNick, mask);
+    const tracked = existing ?? this.#byNick.get(previousKey)!;
+    if (tracked.mask === undefined) tracked.mask = identityMask(mask);
     this.#byNick.delete(previousKey);
-    this.#byNick.set(this.fold(nick), identity);
+    this.#byNick.set(this.fold(nick), tracked);
     return identity;
+  }
+  forget(nick: string): void {
+    this.#byNick.delete(this.fold(nick));
+  }
+  get trackedCount(): number {
+    return this.#byNick.size;
   }
   clear(): void {
     this.#byNick.clear();
   }
+}
+
+function identityMask(
+  mask: { user: string; host: string } | undefined,
+): string | undefined {
+  return mask === undefined
+    ? undefined
+    : `${mask.user}@${mask.host}`.normalize("NFC").toLocaleLowerCase("en-US");
 }
 
 export type IrcEvent =
@@ -66,6 +84,7 @@ export type IrcEvent =
 export class IrcMembershipState {
   readonly #joined = new Map<string, string>();
   readonly #members = new Map<string, IrcMember[]>();
+  readonly #previousMembers = new Map<string, IrcMember[]>();
   constructor(
     public caseMapping: IrcCaseMapping = "rfc1459",
     public prefix = "(qaohv)~&@%+",
@@ -79,10 +98,12 @@ export class IrcMembershipState {
   part(channel: string): void {
     this.#joined.delete(this.key(channel));
     this.#members.delete(this.key(channel));
+    this.#previousMembers.delete(this.key(channel));
   }
   clear(): void {
     this.#joined.clear();
     this.#members.clear();
+    this.#previousMembers.clear();
   }
   isJoined(channel: string): boolean {
     return this.#joined.has(this.key(channel));
@@ -91,7 +112,47 @@ export class IrcMembershipState {
     return [...this.#joined.values()];
   }
   setMembers(channel: string, members: readonly IrcMember[]): void {
-    this.#members.set(this.key(channel), [...members]);
+    const channelKey = this.key(channel);
+    const previous = this.#members.get(channelKey);
+    if (previous !== undefined && previous.length > 0)
+      this.#previousMembers.set(channelKey, previous);
+    this.#members.set(channelKey, [...members]);
+  }
+  memberNicks(channel: string): readonly string[] {
+    const channelKey = this.key(channel);
+    const current = this.#members.get(channelKey) ?? [];
+    const members =
+      current.length > 0
+        ? current
+        : (this.#previousMembers.get(channelKey) ?? current);
+    return members.map((member) => member.nick);
+  }
+  addMember(channel: string, nick: string): void {
+    const channelKey = this.key(channel);
+    const members = this.#members.get(channelKey) ?? [];
+    if (!members.some((member) => this.key(member.nick) === this.key(nick)))
+      members.push({ nick, prefix: "" });
+    this.#members.set(channelKey, members);
+  }
+  removeMember(channel: string, nick: string): void {
+    const channelKey = this.key(channel);
+    const members = this.#members.get(channelKey);
+    if (members === undefined) return;
+    this.#members.set(
+      channelKey,
+      members.filter((member) => this.key(member.nick) !== this.key(nick)),
+    );
+  }
+  removeMemberEverywhere(nick: string): void {
+    for (const channel of this.#members.keys())
+      this.removeMember(channel, nick);
+  }
+  hasMember(nick: string): boolean {
+    return [...this.#members.entries()].some(
+      ([channel, members]) =>
+        this.#joined.has(channel) &&
+        members.some((member) => this.key(member.nick) === this.key(nick)),
+    );
   }
   rename(previousNick: string, nick: string): void {
     for (const members of this.#members.values()) {
@@ -115,6 +176,49 @@ export class IrcMembershipState {
         this.key(member.nick) === this.key(nick) &&
         operators.has(member.prefix),
     );
+  }
+}
+
+export class IrcPresenceCoordinator {
+  constructor(
+    private readonly membership: IrcMembershipState,
+    private readonly identities: IrcIdentityTracker,
+  ) {}
+
+  join(channel: string, nick: string): void {
+    this.membership.addMember(channel, nick);
+  }
+  part(channel: string, nick: string): void {
+    this.membership.removeMember(channel, nick);
+    this.#forgetIfAbsent(nick);
+  }
+  kick(channel: string, nick: string): void {
+    this.part(channel, nick);
+  }
+  leaveChannel(channel: string): void {
+    const nicks = this.membership.memberNicks(channel);
+    this.membership.part(channel);
+    for (const nick of nicks) this.#forgetIfAbsent(nick);
+  }
+  quit(nick: string): void {
+    this.membership.removeMemberEverywhere(nick);
+    this.identities.forget(nick);
+  }
+  rename(
+    previousNick: string,
+    nick: string,
+    mask?: { user: string; host: string },
+  ): string {
+    const identity = this.identities.rename(previousNick, nick, mask);
+    this.membership.rename(previousNick, nick);
+    return identity;
+  }
+  clear(): void {
+    this.membership.clear();
+    this.identities.clear();
+  }
+  #forgetIfAbsent(nick: string): void {
+    if (!this.membership.hasMember(nick)) this.identities.forget(nick);
   }
 }
 

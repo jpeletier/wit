@@ -15,6 +15,7 @@ import {
 import {
   IrcMembershipState,
   IrcIdentityTracker,
+  IrcPresenceCoordinator,
   type IrcCaseMapping,
   type IrcEvent,
   type IrcPort,
@@ -42,6 +43,10 @@ export class IrcClientAdapter implements IrcPort {
   readonly #registration: RegistrationPolicy;
   readonly #identities = new IrcIdentityTracker((nick) =>
     ircCasefold(nick, this.#caseMapping),
+  );
+  readonly #presence = new IrcPresenceCoordinator(
+    this.#membership,
+    this.#identities,
   );
   #caseMapping: IrcCaseMapping = "rfc1459";
   #connectionEnded = true;
@@ -159,30 +164,33 @@ export class IrcClientAdapter implements IrcPort {
     );
     this.#client.on("join", (message) => {
       const user = this.#user(message.source);
+      const self = this.#sameNick(user.nick, this.nick);
+      if (self) this.#membership.join(message.params.channel);
+      else this.#presence.join(message.params.channel, user.nick);
       this.#emit({
         type: "join",
         channel: message.params.channel,
         user,
-        self: this.#sameNick(user.nick, this.nick),
+        self,
       });
-      if (this.#sameNick(user.nick, this.nick))
-        this.#membership.join(message.params.channel);
     });
     this.#client.on("part", (message) => {
       const user = this.#user(message.source);
+      const self = this.#sameNick(user.nick, this.nick);
+      if (self) this.#presence.leaveChannel(message.params.channel);
+      else this.#presence.part(message.params.channel, user.nick);
       this.#emit({
         type: "part",
         channel: message.params.channel,
         user,
-        self: this.#sameNick(user.nick, this.nick),
+        self,
       });
-      if (this.#sameNick(user.nick, this.nick))
-        this.#membership.part(message.params.channel);
     });
     this.#client.on("kick", (message) => {
       const user = this.#user(message.source);
       const self = this.#sameNick(message.params.nick, this.nick);
-      if (self) this.#membership.part(message.params.channel);
+      if (self) this.#presence.leaveChannel(message.params.channel);
+      else this.#presence.kick(message.params.channel, message.params.nick);
       this.#emit({
         type: "kick",
         channel: message.params.channel,
@@ -191,14 +199,17 @@ export class IrcClientAdapter implements IrcPort {
         self,
       });
     });
+    this.#client.on("quit", (message) => {
+      const nick = message.source?.name;
+      if (nick !== undefined) this.#presence.quit(nick);
+    });
     this.#client.on("nick", (message) => {
       const previousNick = message.source?.name ?? "";
-      const identity = this.#identities.rename(
+      const identity = this.#presence.rename(
         previousNick,
         message.params.nick,
         message.source?.mask,
       );
-      this.#membership.rename(previousNick, message.params.nick);
       this.#emit({
         type: "nick",
         previousNick,
@@ -237,8 +248,7 @@ export class IrcClientAdapter implements IrcPort {
     if (this.#connectionEnded) return;
     this.#connectionEnded = true;
     this.#outbound.clear();
-    this.#membership.clear();
-    this.#identities.clear();
+    this.#presence.clear();
     this.#registration.disconnected();
     try {
       this.#emit({ type: "disconnected", reason: "connection lost" });
