@@ -12,6 +12,15 @@ import {
 import { FakeIrcPort } from "../src/irc/port.js";
 import { cylTranscript, triviaTranscript } from "./fixtures/transcripts.js";
 
+const fakePorts: FakeIrcPort[] = [];
+
+test.after(() => {
+  for (const irc of fakePorts)
+    for (const entry of irc.sent)
+      if (entry.kind === "message" || entry.kind === "notice")
+        assert.doesNotMatch(entry.text, /[\r\n\0]/u);
+});
+
 function fixture(): {
   bot: WitBot;
   irc: FakeIrcPort;
@@ -32,6 +41,7 @@ function fixture(): {
     INSERT INTO dictionary VALUES(2,'AAA','aaa','triple a','OK');
     INSERT INTO dictionary VALUES(3,'AAAA','aaaa','cuádruple a','OK');`);
   const irc = new FakeIrcPort();
+  fakePorts.push(irc);
   const clock = { now: () => new Date("2026-08-05T00:00:00Z") };
   const games = new GameRepository(db, clock);
   const bot = new WitBot(
@@ -214,6 +224,57 @@ test("numeric Trivia displays submitted expression, canonical result, author and
   );
   assert.ok(line?.text.includes("Autor"));
   assert.ok(line?.text.includes("#1"));
+  db.close();
+});
+
+test("Trivia sanitizes database question text and line-broken repeated answers", () => {
+  const { bot, irc, db } = fixture();
+  db.exec(`UPDATE questions
+    SET question='Pregunta' || char(10) || 'inyectada' || char(0) || 'fin',
+        answer='Respuesta' || char(13) || char(10) || 'RESPUESTA'
+    WHERE id=1`);
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#c",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
+  for (let tick = 0; tick < 6; tick++) bot.tick();
+  assert.ok(
+    irc.sent.some((entry) => entry.text.includes("Pregunta inyectada fin")),
+  );
+  bot.handle({ type: "message", channel: "#c", user, text: "Respuesta" });
+  const reveal = irc.sent.find((entry) =>
+    entry.text.includes("La respuesta era"),
+  );
+  assert.ok(reveal?.text.includes("\u0002Respuesta\u0002"));
+  assert.equal(reveal?.text.includes("Respuesta RESPUESTA"), false);
+  db.close();
+});
+
+test("CYL sanitizes database definitions before displaying excerpts", () => {
+  const { bot, irc, db } = fixture();
+  db.exec(`UPDATE dictionary
+    SET meaning='primera línea' || char(10) || char(0) || 'segunda parte'
+    WHERE id=1`);
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#c",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({ type: "privateMessage", user, text: "CYL #c 1" });
+  for (let tick = 0; tick < 5; tick++) bot.tick();
+  bot.handle({ type: "message", channel: "#c", user, text: "AA" });
+  for (let tick = 5; tick < 60; tick++) bot.tick();
+  assert.ok(
+    irc.sent.some((entry) =>
+      entry.text.includes(': "primera línea segunda parte"'),
+    ),
+  );
   db.close();
 });
 

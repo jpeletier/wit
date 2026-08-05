@@ -1,5 +1,5 @@
 import { calculate } from "../core/expression.js";
-import { mirc, vbRound } from "../core/format.js";
+import { mirc, sanitizeIrcText, vbRound } from "../core/format.js";
 import type { RandomSource } from "../core/ports.js";
 
 export interface TriviaQuestion {
@@ -35,6 +35,25 @@ export type TriviaEvent =
 
 export function answerWords(answer: string): string[] {
   return answer.split(" ").filter(Boolean);
+}
+
+export function normalizeTriviaAnswer(value: string): string {
+  const tokens: string[] = [];
+  for (const rawLine of value.split(/\r\n?|\n/gu)) {
+    const line = sanitizeIrcText(rawLine)
+      .trim()
+      .replaceAll(/[ \t]+/gu, " ");
+    if (line === "") continue;
+    const lineTokens = line.split(" ");
+    if (
+      tokens.length > 0 &&
+      tokens.at(-1)?.toLocaleLowerCase("es-ES") ===
+        lineTokens[0]?.toLocaleLowerCase("es-ES")
+    )
+      lineTokens.shift();
+    tokens.push(...lineTokens);
+  }
+  return tokens.join(" ");
 }
 
 export function matchesTriviaAnswer(
@@ -185,10 +204,14 @@ export class TriviaGame {
     let question: TriviaQuestion | undefined;
     for (let attempts = 0; attempts < 1_000; attempts++) {
       const candidate = this.nextQuestion();
-      const answer = candidate.answer.trim();
+      const answer = normalizeTriviaAnswer(candidate.answer);
       const words = answerWords(answer);
       if (words.length > 0 && words.length <= 10) {
-        question = { ...candidate, answer };
+        question = {
+          ...candidate,
+          text: sanitizeIrcText(candidate.text),
+          answer,
+        };
         break;
       }
     }

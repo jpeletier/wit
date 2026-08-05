@@ -44,3 +44,13 @@ test("identity tracker separates shared masks and transfers identity on NICK", (
   assert.equal(tracker.resolve("Carla", mask), first);
   assert.equal(tracker.resolve("Ana", mask) === first, false);
 });
+
+test("fake adapter sanitizes all outbound message and notice text", () => {
+  const irc = new FakeIrcPort();
+  irc.say("#c", "mensaje\r\n\0seguro");
+  irc.notice("Ana", "aviso\nseguro");
+  assert.deepEqual(
+    irc.sent.map((entry) => entry.text),
+    ["mensaje seguro", "aviso seguro"],
+  );
+});

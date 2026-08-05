@@ -7,6 +7,10 @@ export const mirc = {
     `${CONTROL}${foreground}${background === undefined ? "" : `,${background}`}${text}${CONTROL}`,
 };
 
+export function sanitizeIrcText(value: string): string {
+  return value.replaceAll(/[\r\n\0]+/gu, " ");
+}
+
 export function vbRound(value: number): number {
   if (!Number.isFinite(value))
     throw new RangeError("Cannot round a non-finite value");
@@ -18,7 +22,7 @@ export function vbRound(value: number): number {
 }
 
 export function definitionExcerpt(value: string, limit = 100): string {
-  const normalized = value.replaceAll("\u0002", " || ");
+  const normalized = sanitizeIrcText(value).replaceAll("\u0002", " || ");
   return normalized.length > limit
     ? `${normalized.slice(0, limit)} ...`
     : normalized;

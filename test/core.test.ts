@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculate } from "../src/core/expression.js";
-import { definitionExcerpt, mirc, vbRound } from "../src/core/format.js";
+import {
+  definitionExcerpt,
+  mirc,
+  sanitizeIrcText,
+  vbRound,
+} from "../src/core/format.js";
 import { lookupKey, repairMojibake } from "../src/core/text.js";
 
 test("safe calculator supports precedence, powers, parentheses, decimals and dice", () => {
@@ -26,9 +31,18 @@ test("VB banker rounding and mIRC controls are preserved", () => {
   assert.equal(mirc.color("x", 5), "\u00035x\u0003");
 });
 
+test("IRC text sanitizer collapses unsafe separators and preserves Unicode and mIRC controls", () => {
+  const controls = "\u0002\u0003\u000f\u0016\u001d\u001f";
+  assert.equal(
+    sanitizeIrcText(`á${controls}\r\n\0\n世界`),
+    `á${controls} 世界`,
+  );
+});
+
 test("definition ellipsis uses the original length", () => {
   assert.equal(definitionExcerpt("short", 10), "short");
   assert.equal(definitionExcerpt("12345678901", 10), "1234567890 ...");
+  assert.equal(definitionExcerpt("12345\r\n\0\n67890", 10), "12345 6789 ...");
 });
 
 test("lookup keys preserve accents and mojibake repair is strict and reversible", () => {

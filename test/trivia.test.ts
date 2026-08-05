@@ -4,6 +4,7 @@ import {
   hintWord,
   matchesNumericAnswer,
   matchesTriviaAnswer,
+  normalizeTriviaAnswer,
   TriviaGame,
   numericHint,
   triviaPoints,
@@ -21,6 +22,11 @@ test("text matching is unordered, case-insensitive, accent-sensitive and ignores
     matchesTriviaAnswer("1 2 3 4 5 6 7 8 9 10 11", "1 2 3 4 5 6 7 8 9 10 11"),
     false,
   );
+});
+
+test("answer normalization collapses only duplicate tokens across source line breaks", () => {
+  assert.equal(normalizeTriviaAnswer("Nueva York\r\nYORK"), "Nueva York");
+  assert.equal(normalizeTriviaAnswer("muy  muy\0bien"), "muy muy bien");
 });
 
 test("numeric matching uses exact safe expression equality", () => {

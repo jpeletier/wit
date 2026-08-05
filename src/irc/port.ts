@@ -1,4 +1,5 @@
 import { ircCasefold } from "../core/text.js";
+import { sanitizeIrcText } from "../core/format.js";
 
 export type IrcCaseMapping = "ascii" | "rfc1459" | "strict-rfc1459";
 export interface IrcUser {
@@ -163,10 +164,10 @@ export class FakeIrcPort implements IrcPort {
     this.sent.push({ kind: "join", target: channel, text: "" });
   }
   say(target: string, text: string): void {
-    this.sent.push({ kind: "message", target, text });
+    this.sent.push({ kind: "message", target, text: sanitizeIrcText(text) });
   }
   notice(target: string, text: string): void {
-    this.sent.push({ kind: "notice", target, text });
+    this.sent.push({ kind: "notice", target, text: sanitizeIrcText(text) });
   }
   isJoined(channel: string): boolean {
     return this.state.isJoined(channel);

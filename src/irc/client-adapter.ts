@@ -1,5 +1,6 @@
 import { Client } from "irc-client-ts";
 import { ircCasefold } from "../core/text.js";
+import { sanitizeIrcText } from "../core/format.js";
 import {
   IrcMembershipState,
   IrcIdentityTracker,
@@ -68,10 +69,10 @@ export class IrcClientAdapter implements IrcPort {
     this.#client.join(channel);
   }
   say(target: string, text: string): void {
-    this.#client.privmsg(target, text);
+    this.#client.privmsg(target, sanitizeIrcText(text));
   }
   notice(target: string, text: string): void {
-    this.#client.notice(target, text);
+    this.#client.notice(target, sanitizeIrcText(text));
   }
   onEvent(listener: (event: IrcEvent) => void): () => void {
     this.#listeners.add(listener);
