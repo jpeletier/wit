@@ -2,6 +2,7 @@ import { calculate } from "../core/expression.js";
 import { mirc } from "../core/format.js";
 import type { Clock, RandomSource } from "../core/ports.js";
 import { ircCasefold } from "../core/text.js";
+import { formatMadridDisplayDateTime } from "../core/time.js";
 import type {
   DictionaryRepository,
   GameRepository,
@@ -59,7 +60,7 @@ const HELP = [
   "TRIVIAL #canal STOP         : Detiene una partida de trivial.",
   "CYL #canal numdesafíos      : Comienza una partida de Cifras y Letras.",
   "CYL #canal STOP             : Detiene una partida de Cifras y Letras.",
-  "DATE                        : Muestra la hora en el servidor.",
+  "DATE                        : Muestra la hora de Madrid.",
 ];
 
 export class WitBot {
@@ -180,7 +181,7 @@ export class WitBot {
     if (command === "DATE") {
       this.irc.notice(
         user.nick,
-        `La hora en el servidor es ${this.clock.now().toLocaleString("es-ES")}`,
+        `La hora en Madrid es ${formatMadridDisplayDateTime(this.clock.now())}`,
       );
       return;
     }

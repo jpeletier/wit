@@ -54,6 +54,8 @@ IDs and historical rows are preserved. League IDs use the legacy March 2001 epoc
 
 Persistence operations use `BEGIN IMMEDIATE` transactions. Failures terminate the affected game visibly rather than continuing with unrecorded state.
 
+New runtime timestamps use legacy Madrid wall time independent of the deployment host timezone. They are stored without an offset as `YYYY-MM-DDTHH:mm:ss.SSS` in `Europe/Madrid`; repeated local times during the autumn DST transition are intentionally ambiguous for compatibility with imported SQL datetime values. Historical rows and one-off import audit timestamps are not rewritten.
+
 ## Compatibility Notes
 
 - Trivia answer words are case-insensitive, accent-sensitive, unordered, allow extras, ignore repeated-space empties, and reject answers over ten words.

@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { Clock, RandomSource } from "../core/ports.js";
 import { randomInt } from "../core/ports.js";
 import { lookupKey } from "../core/text.js";
+import { formatMadridSqlDateTime, madridDateTimeParts } from "../core/time.js";
 import type { DictionaryWord } from "../games/cyl.js";
 import type { TriviaQuestion } from "../games/trivia.js";
 import { transaction } from "./database.js";
@@ -31,7 +32,8 @@ export interface TournamentRanking {
 }
 
 export function legacyLeagueId(date: Date): number {
-  return (date.getFullYear() - 2001) * 12 + date.getMonth() - 2;
+  const { year, month } = madridDateTimeParts(date);
+  return (year - 2001) * 12 + month - 3;
 }
 
 export class GameRepository {
@@ -51,7 +53,7 @@ export class GameRepository {
           .prepare("UPDATE players SET nick=?,last_used=? WHERE id=?")
           .run(
             nick.normalize("NFC"),
-            this.clock.now().toISOString(),
+            formatMadridSqlDateTime(this.clock.now()),
             existing.id,
           );
         return existing.id;
@@ -65,7 +67,7 @@ export class GameRepository {
             networkId,
             nick.normalize("NFC"),
             key,
-            this.clock.now().toISOString(),
+            formatMadridSqlDateTime(this.clock.now()),
           ).lastInsertRowid,
       );
     });
@@ -96,7 +98,7 @@ export class GameRepository {
                 networkId,
                 channelName.normalize("NFC"),
                 channelKey,
-                this.clock.now().toISOString(),
+                formatMadridSqlDateTime(this.clock.now()),
               ).lastInsertRowid,
           ),
           defaultTournamentId: null,
@@ -132,7 +134,7 @@ export class GameRepository {
             )
             .run(
               description,
-              this.clock.now().toISOString(),
+              formatMadridSqlDateTime(this.clock.now()),
               channel.id,
               leagueId,
               subsetId,
@@ -196,7 +198,7 @@ export class GameRepository {
           .run(
             tournamentId,
             challenges,
-            this.clock.now().toISOString(),
+            formatMadridSqlDateTime(this.clock.now()),
             description,
           ).lastInsertRowid,
       ),
@@ -207,7 +209,7 @@ export class GameRepository {
     transaction(this.database, () => {
       const result = this.database
         .prepare("UPDATE games SET date_end=? WHERE id=? AND date_end IS NULL")
-        .run(this.clock.now().toISOString(), gameId);
+        .run(formatMadridSqlDateTime(this.clock.now()), gameId);
       if (result.changes !== 1)
         throw new Error(`Game ${gameId} was not active`);
     });

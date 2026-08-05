@@ -31,7 +31,7 @@ test("player and score upserts are transactional and IDs remain unique", () => {
         last_used: string;
       }
     ).last_used,
-    "2026-08-05T00:00:00.000Z",
+    "2026-08-05T02:00:00.000",
   );
   repository.addScore(player, 1, 1, 100);
   repository.addScore(player, 1, 1, 75);
@@ -69,11 +69,58 @@ test("batch score persistence rolls back every winner on one invalid row", () =>
 });
 
 test("legacy league IDs use the March 2001 epoch at month boundaries", () => {
-  assert.equal(legacyLeagueId(new Date(2001, 2, 1)), 0);
-  assert.equal(legacyLeagueId(new Date(2001, 1, 28, 23, 59, 59)), -1);
-  assert.equal(legacyLeagueId(new Date(2026, 6, 31, 23, 59, 59)), 304);
-  assert.equal(legacyLeagueId(new Date(2026, 7, 1)), 305);
-  assert.equal(legacyLeagueId(new Date(2026, 8, 1)), 306);
+  assert.equal(legacyLeagueId(new Date("2001-02-28T23:00:00Z")), 0);
+  assert.equal(legacyLeagueId(new Date("2001-02-28T22:59:59Z")), -1);
+  assert.equal(legacyLeagueId(new Date("2026-07-31T21:59:59Z")), 304);
+  assert.equal(legacyLeagueId(new Date("2026-07-31T22:00:00Z")), 305);
+  assert.equal(legacyLeagueId(new Date("2026-08-31T22:00:00Z")), 306);
+});
+
+test("runtime persistence uses offset-less Madrid wall timestamps", () => {
+  const db = database();
+  const repository = new GameRepository(db, {
+    now: () => new Date("2026-08-05T00:00:00.123Z"),
+  });
+  const playerId = repository.player(1, "Ana");
+  const context = repository.prepareTournament(1, "#madrid", 1);
+  const gameId = repository.createGame(context.tournamentId, 5);
+  repository.finishGame(gameId);
+  const expected = "2026-08-05T02:00:00.123";
+  assert.equal(
+    (
+      db
+        .prepare("SELECT last_used value FROM players WHERE id=?")
+        .get(playerId) as {
+        value: string;
+      }
+    ).value,
+    expected,
+  );
+  assert.equal(
+    (
+      db
+        .prepare("SELECT last_used value FROM channels WHERE id=?")
+        .get(context.channelId) as { value: string }
+    ).value,
+    expected,
+  );
+  assert.equal(
+    (
+      db
+        .prepare("SELECT date_init value FROM tournaments WHERE id=?")
+        .get(context.tournamentId) as { value: string }
+    ).value,
+    expected,
+  );
+  assert.deepEqual(
+    {
+      ...db
+        .prepare("SELECT date_init,date_end FROM games WHERE id=?")
+        .get(gameId),
+    },
+    { date_init: expected, date_end: expected },
+  );
+  db.close();
 });
 
 test("tournaments reuse current custom subsets and inherit stale defaults", () => {

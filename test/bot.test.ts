@@ -67,6 +67,15 @@ test("commands report busy channels, authorize stop, welcome every join and forc
   });
   bot.handle({ type: "join", channel: "#c", user, self: false });
   bot.handle({ type: "join", channel: "#c", user, self: false });
+  bot.handle({ type: "privateMessage", user, text: "DATE" });
+  assert.ok(
+    irc.sent.some(
+      (entry) =>
+        entry.kind === "notice" &&
+        entry.text ===
+          "La hora en Madrid es 2026-08-05 02:00:00.000 (Europe/Madrid)",
+    ),
+  );
   assert.equal(
     irc.sent.filter(
       (entry) => entry.kind === "notice" && entry.text.startsWith("Bienvenido"),
