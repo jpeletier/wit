@@ -1,1 +1,0 @@
-start wit wit2.cfg.ini
