@@ -8,12 +8,12 @@ import {
   GameRepository,
   QuestionRepository,
 } from "./db/repositories.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, selectDatabasePath } from "./config.js";
 import { IrcClientAdapter } from "./irc/client-adapter.js";
 
 const config = loadConfig(resolve(process.env.WIT_CONFIG ?? "config.json"));
 const database = openDatabase(
-  resolve(process.env.WIT_DATABASE ?? config.database),
+  resolve(selectDatabasePath(config.database, process.env.WIT_DATABASE)),
 );
 const games = new GameRepository(database, systemClock);
 const questions = new QuestionRepository(database, systemRandom);

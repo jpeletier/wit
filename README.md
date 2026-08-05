@@ -21,7 +21,7 @@ cp config.example.json config.json
 npm start
 ```
 
-`config.json`, `.env`, `db/`, logs, backups, binaries, and build output are ignored. Configure one object per bot; every object gets an independent IRC lifecycle and outbound PRIVMSG/NOTICE queue. Connections retry indefinitely with adapter-owned exponential backoff from 5 to 120 seconds, reset after registration. `outboundDelayMs` defaults to the legacy-compatible 2000 ms and must be positive. Never commit real passwords.
+`config.json`, `.env`, `db/`, logs, backups, binaries, and build output are ignored. Configure one object per bot; every object gets an independent IRC lifecycle and outbound PRIVMSG/NOTICE queue. Connections retry indefinitely with adapter-owned exponential backoff from 5 to 120 seconds, reset after registration. `outboundDelayMs` defaults to the legacy-compatible 2000 ms and accepts 1 through 300000. Ports accept 1 through 65535; network IDs must be positive safe integers; channel names use an IRC prefix (`#`, `&`, `+`, or `!`), are unique per bot, and are limited to 50 UTF-8 bytes. Multiple bots may share a network in different channels, and channel names may repeat on different networks; the same network/channel pair cannot be assigned twice. Unknown configuration fields are rejected. Never commit real passwords.
 
 Environment overrides:
 
@@ -32,7 +32,7 @@ Environment overrides:
 
 ## Authentication
 
-Authentication is optional and explicit in ignored `config.json`; no service or NickServ target is inferred. `serverPassword` is sent only as the IRC server `PASS`. `accountAuth` supports SASL PLAIN with `method: "sasl"`, `username`, and `password`.
+Authentication is optional and explicit in ignored `config.json`; no service or NickServ target is inferred. `serverPassword` is sent only as the IRC server `PASS`. `accountAuth` supports SASL PLAIN with the fields `method` (exactly `sasl`), `username`, and `password`. Authentication is intentionally omitted from `config.example.json`: add only the required field names to ignored `config.json`, with real credentials supplied locally rather than password placeholders.
 
 Post-registration service authentication is separate under `serviceAuth`. It requires single-token `target` and `password` values, accepts an optional single-token `command` (default `IDENTIFY`) and optional `account`, and supports explicit targets such as `nick@server`. It is paced as the first outbound item after each successful registration, before configured channels are joined.
 
