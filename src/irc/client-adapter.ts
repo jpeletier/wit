@@ -1,6 +1,7 @@
 import { Client } from "irc-client-ts";
 import { ircCasefold } from "../core/text.js";
 import { sanitizeIrcText } from "../core/format.js";
+import { OutboundQueue, resolveOutboundDelayMs } from "./outbound-queue.js";
 import {
   IrcMembershipState,
   IrcIdentityTracker,
@@ -17,12 +18,14 @@ export interface IrcClientConfig {
   tls: boolean;
   password?: string;
   channels: string[];
+  outboundDelayMs?: number;
 }
 
 export class IrcClientAdapter implements IrcPort {
   readonly #client: Client;
   readonly #listeners = new Set<(event: IrcEvent) => void>();
   readonly #membership = new IrcMembershipState();
+  readonly #outbound: OutboundQueue;
   readonly #identities = new IrcIdentityTracker((nick) =>
     ircCasefold(nick, this.#caseMapping),
   );
@@ -44,6 +47,12 @@ export class IrcClientAdapter implements IrcPort {
       },
       ctcpReplies: { version: "Wit TypeScript" },
     });
+    this.#outbound = new OutboundQueue(
+      resolveOutboundDelayMs(config.outboundDelayMs),
+      undefined,
+      (error) =>
+        console.error(`IRC ${this.config.nick} outbound send failed`, error),
+    );
     this.#wireEvents();
   }
 
@@ -63,16 +72,19 @@ export class IrcClientAdapter implements IrcPort {
     });
   }
   disconnect(reason = "Wit detenido"): void {
+    this.#outbound.clear();
     this.#client.quit(reason);
   }
   join(channel: string): void {
     this.#client.join(channel);
   }
   say(target: string, text: string): void {
-    this.#client.privmsg(target, sanitizeIrcText(text));
+    const safeText = sanitizeIrcText(text);
+    this.#outbound.enqueue(() => this.#client.privmsg(target, safeText));
   }
   notice(target: string, text: string): void {
-    this.#client.notice(target, sanitizeIrcText(text));
+    const safeText = sanitizeIrcText(text);
+    this.#outbound.enqueue(() => this.#client.notice(target, safeText));
   }
   onEvent(listener: (event: IrcEvent) => void): () => void {
     this.#listeners.add(listener);
@@ -95,9 +107,14 @@ export class IrcClientAdapter implements IrcPort {
       this.#emit({ type: "registered" });
     });
     this.#client.on("disconnected", () => {
+      this.#outbound.clear();
       this.#membership.clear();
       this.#identities.clear();
-      this.#emit({ type: "disconnected", reason: "connection lost" });
+      try {
+        this.#emit({ type: "disconnected", reason: "connection lost" });
+      } finally {
+        this.#outbound.clear();
+      }
     });
     this.#client.on("privmsg:channel", (message) =>
       this.#emit({

@@ -8,6 +8,7 @@ export interface BotConfig {
   password?: string;
   networkId: number;
   channels: string[];
+  outboundDelayMs?: number;
 }
 export interface Config {
   database: string;
@@ -44,7 +45,11 @@ function validateBot(raw: unknown, index: number): BotConfig {
     typeof value.port !== "number" ||
     typeof value.networkId !== "number" ||
     !Array.isArray(value.channels) ||
-    !value.channels.every((item) => typeof item === "string")
+    !value.channels.every((item) => typeof item === "string") ||
+    (value.outboundDelayMs !== undefined &&
+      (typeof value.outboundDelayMs !== "number" ||
+        !Number.isSafeInteger(value.outboundDelayMs) ||
+        value.outboundDelayMs <= 0))
   )
     throw new Error(`bots[${index}] is invalid`);
   return {
@@ -54,6 +59,9 @@ function validateBot(raw: unknown, index: number): BotConfig {
     tls: value.tls !== false,
     networkId: value.networkId,
     channels: value.channels,
+    ...(typeof value.outboundDelayMs === "number"
+      ? { outboundDelayMs: value.outboundDelayMs }
+      : {}),
     ...(typeof value.password === "string" ? { password: value.password } : {}),
   };
 }

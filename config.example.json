@@ -9,6 +9,7 @@
       "tls": true,
       "password": "****",
       "networkId": 1,
+      "outboundDelayMs": 2000,
       "channels": ["#trivia"]
     }
   ]
