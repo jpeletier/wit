@@ -1,0 +1,15 @@
+{
+  "database": "./db/wit.sqlite",
+  "welcomeOnJoin": true,
+  "bots": [
+    {
+      "nick": "Wit",
+      "server": "irc.example.net",
+      "port": 6697,
+      "tls": true,
+      "password": "****",
+      "networkId": 1,
+      "channels": ["#trivia"]
+    }
+  ]
+}
