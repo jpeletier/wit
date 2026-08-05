@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { WitBot } from "./app/bot.js";
+import { runQuestionMaintenance } from "./app/maintenance.js";
 import { systemClock, systemRandom } from "./core/ports.js";
 import { openDatabase } from "./db/database.js";
 import {
@@ -32,8 +33,14 @@ const bots = config.bots.map((botConfig) => {
 });
 
 await Promise.all(bots.map((bot) => bot.start()));
-const questionMaintenance = setInterval(() => questions.age(), 60_000);
+const questionMaintenance = setInterval(
+  () => runQuestionMaintenance(() => questions.age()),
+  60_000,
+);
+let shuttingDown = false;
 const shutdown = (): void => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   clearInterval(questionMaintenance);
   for (const bot of bots) {
     bot.stop();
