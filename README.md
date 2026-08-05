@@ -30,6 +30,8 @@ Environment overrides:
 - `WIT_SOURCE_DATABASE`: staging extraction, default `db/trivial.sqlite`
 - `WIT_IMPORT_REPORT`: ignored audit report, default `db/import-audit.json`
 
+Startup requires the configured database path to already be a regular SQLite file. Before enabling runtime write PRAGMAs, the bot checks migration version 1 and the required runtime tables; it exits on missing, empty, malformed, or newer schemas without creating a replacement database. This is a fast structural check, not a full-table integrity scan.
+
 ## Authentication
 
 Authentication is optional and explicit in ignored `config.json`; no service or NickServ target is inferred. `serverPassword` is sent only as the IRC server `PASS`. `accountAuth` supports SASL PLAIN with the fields `method` (exactly `sasl`), `username`, and `password`. Authentication is intentionally omitted from `config.example.json`: add only the required field names to ignored `config.json`, with real credentials supplied locally rather than password placeholders.

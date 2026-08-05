@@ -171,7 +171,6 @@ test("question selection increments repeat weighting transactionally", () => {
     "INSERT INTO question_subset_members VALUES(1,1,1,1); INSERT INTO questions VALUES(1,'q','a',NULL,0,1,1,1,0,NULL)",
   );
   const repository = new QuestionRepository(db, { next: () => 0 });
-  assert.equal(repository.multiplier(1), 1);
   assert.equal(repository.next(1).id, 1);
   assert.equal(
     (

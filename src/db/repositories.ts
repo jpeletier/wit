@@ -260,15 +260,6 @@ export class GameRepository {
       .map((row, index) => ({ ...row, rank: index + 1 }))
       .filter((row) => wanted.has(row.playerId));
   }
-
-  historicalTotal(playerId: number, tournamentId: number): number {
-    const row = this.database
-      .prepare(
-        "SELECT COALESCE(SUM(score),0) total FROM score_history WHERE player_id=? AND tournament_id=?",
-      )
-      .get(playerId, tournamentId) as { total: number };
-    return row.total;
-  }
 }
 
 interface TournamentRow {
@@ -347,15 +338,6 @@ export class QuestionRepository {
       this.#subsets.clear();
       this.#ageMinutes = 0;
     }
-  }
-
-  multiplier(subsetId: number): number {
-    const row = this.database
-      .prepare("SELECT multiplier FROM question_subsets WHERE id=?")
-      .get(subsetId) as { multiplier: number } | undefined;
-    if (row === undefined)
-      throw new Error(`Question subset ${subsetId} not found`);
-    return row.multiplier;
   }
 
   #subjects(
