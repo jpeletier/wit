@@ -37,10 +37,10 @@ test("letter validation folds vowel accents while dictionary lookup keeps accent
     ["C", "A", "M", "I", "O", "N", "X", "Y", "Z"],
     (key) => dictionary.get(key),
   );
-  assert.equal(round.submit("u1", "Ana", "  CAMIÓN "), true);
+  assert.equal(round.submit("u1", "Ana", "  CAMIÓN "), "retained");
   assert.equal(round.winners()[0]?.word, "CAMIÓN");
   assert.equal(round.winners()[0]?.score, scoreWord("CAMIÓN"));
-  assert.equal(round.submit("u2", "Bea", "CAMION"), false);
+  assert.equal(round.submit("u2", "Bea", "CAMION"), "rejected");
 });
 
 test("CYL inventory preserves Ñ as a distinct premium tile", () => {
@@ -59,14 +59,35 @@ test("CYL inventory preserves Ñ as a distinct premium tile", () => {
   const withoutEnye = new LetterRound(["A", "N", "O"], (key) =>
     dictionary.get(key),
   );
-  assert.equal(withoutEnye.submit("u1", "Ana", "AÑO"), false);
+  assert.equal(withoutEnye.submit("u1", "Ana", "AÑO"), "rejected");
   assert.deepEqual(withoutEnye.winners(), []);
 
   const withEnye = new LetterRound(["A", "Ñ", "O"], (key) =>
     dictionary.get(key),
   );
-  assert.equal(withEnye.submit("u1", "Ana", "AÑO"), true);
+  assert.equal(withEnye.submit("u1", "Ana", "AÑO"), "retained");
   assert.equal(withEnye.winners()[0]?.score, 100);
+});
+
+test("LetterRound distinguishes rejected, retained and stable top-three discard", () => {
+  const dictionary = new Map(
+    ["AAAA", "AAA", "AA", "ÁA"].map((word) => [
+      word.toLocaleLowerCase("es-ES"),
+      { word, meaning: null, status: "OK" as const },
+    ]),
+  );
+  const round = new LetterRound(["A", "A", "A", "A"], (key) =>
+    dictionary.get(key),
+  );
+  assert.equal(round.submit("u1", "Ana", "AAAA"), "retained");
+  assert.equal(round.submit("u2", "Bea", "AAA"), "retained");
+  assert.equal(round.submit("u3", "Carla", "AA"), "retained");
+  assert.equal(round.submit("u4", "Dora", "ÁA"), "discarded");
+  assert.equal(round.submit("u5", "Eva", "ZZ"), "rejected");
+  assert.deepEqual(
+    round.winners().map((winner) => winner.identity),
+    ["u1", "u2", "u3"],
+  );
 });
 
 test("K has value 8 and word scores preserve legacy values", () => {

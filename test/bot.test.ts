@@ -206,6 +206,67 @@ test("deterministic full CYL transcript", () => {
   db.close();
 });
 
+test("discarded fourth Letras candidate creates no player or completion entry", () => {
+  const { bot, irc, db } = fixture();
+  db.exec(
+    "INSERT INTO dictionary VALUES(4,'ÁA','áa','doble a acentuada','OK')",
+  );
+  const users = [
+    { identity: "u1", nick: "Ana", word: "AA" },
+    { identity: "u2", nick: "Bea", word: "AAA" },
+    { identity: "u3", nick: "Carla", word: "AAAA" },
+    { identity: "u4", nick: "Dora", word: "ÁA" },
+  ];
+  irc.emit({
+    type: "join",
+    channel: "#c",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({
+    type: "privateMessage",
+    user: users[0]!,
+    text: "CYL #c 1",
+  });
+  for (let tick = 0; tick < 5; tick++) bot.tick();
+  for (const user of users)
+    bot.handle({
+      type: "message",
+      channel: "#c",
+      user,
+      text: user.word,
+    });
+  assert.equal(
+    (
+      db.prepare("SELECT count(*) count FROM players").get() as {
+        count: number;
+      }
+    ).count,
+    3,
+  );
+  for (let tick = 5; tick < 60; tick++) bot.tick();
+  const standings = irc.sent.find((entry) =>
+    entry.text.startsWith("Puntuaciones:"),
+  );
+  assert.ok(standings?.text.includes("Carla"));
+  assert.ok(standings?.text.includes("Bea"));
+  assert.ok(standings?.text.includes("Ana"));
+  assert.equal(standings?.text.includes("Dora"), false);
+  const completion = irc.sent.filter((entry) =>
+    entry.text.includes("Clasificación General"),
+  );
+  assert.equal(completion.length, 3);
+  assert.equal(
+    completion.some((entry) => entry.text.includes("Dora")),
+    false,
+  );
+  assert.equal(
+    irc.sent.some((entry) => entry.text.includes("Dora")),
+    false,
+  );
+  db.close();
+});
+
 test("numeric Trivia displays submitted expression, canonical result, author and question ID", () => {
   const { bot, irc, db } = fixture();
   db.exec("UPDATE questions SET answer='42' WHERE id=1");

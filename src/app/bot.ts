@@ -384,14 +384,15 @@ export class WitBot {
       return;
     }
     if (session?.type === "cyl" && session.round !== undefined) {
+      if (session.round instanceof LetterRound) {
+        const outcome = session.round.submit(user.identity, user.nick, text);
+        if (outcome === "retained")
+          this.#player(session, user).nick = user.nick;
+        return;
+      }
       const accepted = session.round.submit(user.identity, user.nick, text);
       if (accepted) this.#player(session, user).nick = user.nick;
-      if (
-        accepted &&
-        session.round instanceof NumberRound &&
-        session.round.winner()?.distance === 0
-      )
-        session.tick = 60;
+      if (accepted && session.round.winner()?.distance === 0) session.tick = 60;
       return;
     }
     if (session === undefined && (text.startsWith("?") || /^\d/u.test(text))) {

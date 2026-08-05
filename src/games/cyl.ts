@@ -25,6 +25,7 @@ export interface NumberWinner {
   distance: number;
   score: number;
 }
+export type LetterSubmissionOutcome = "rejected" | "retained" | "discarded";
 
 const vowels = "AAAAAAAAAAAAEEEEEEEEEEEEIIIIIIOOOOOOOOOUUUUU";
 const mixedVowels = "AAAEEEEIIOOOUU";
@@ -194,26 +195,27 @@ export class LetterRound {
     private readonly lookup: (key: string) => DictionaryWord | undefined,
   ) {}
 
-  submit(identity: string, nick: string, raw: string): boolean {
+  submit(identity: string, nick: string, raw: string): LetterSubmissionOutcome {
     const word = raw.trim();
     if (word.length <= 1 || !usesSuppliedLetters(word, this.letters))
-      return false;
+      return "rejected";
     const entry = this.lookup(lookupKey(word));
     if (entry === undefined || (entry.status !== "OK" && entry.status !== "NF"))
-      return false;
+      return "rejected";
     if (
       this.#winners.some((winner) => lookupKey(winner.word) === lookupKey(word))
     )
-      return false;
+      return "rejected";
     const previous = this.#winners.find(
       (winner) => winner.identity === identity,
     );
     if (previous !== undefined && [...previous.word].length >= [...word].length)
-      return false;
+      return "rejected";
     this.#winners = this.#winners.filter(
       (winner) => winner.identity !== identity,
     );
-    this.#winners.push({ identity, nick, word, entry, score: 0 });
+    const candidate = { identity, nick, word, entry, score: 0 };
+    this.#winners.push(candidate);
     this.#winners.sort(
       (left, right) => [...right.word].length - [...left.word].length,
     );
@@ -221,7 +223,7 @@ export class LetterRound {
     this.#winners.forEach((winner, index) => {
       winner.score = vbRound(scoreWord(winner.word) / 2 ** index);
     });
-    return true;
+    return this.#winners.includes(candidate) ? "retained" : "discarded";
   }
 
   winners(): readonly LetterWinner[] {
