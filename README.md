@@ -21,7 +21,7 @@ cp config.example.json config.json
 npm start
 ```
 
-`config.json`, `.env`, `db/`, logs, backups, binaries, and build output are ignored. Configure one object per bot; every object gets an independent `irc-client-ts` client, reconnect lifecycle, and outbound PRIVMSG/NOTICE queue. `outboundDelayMs` defaults to the legacy-compatible 2000 ms and must be positive. Never commit real passwords.
+`config.json`, `.env`, `db/`, logs, backups, binaries, and build output are ignored. Configure one object per bot; every object gets an independent IRC lifecycle and outbound PRIVMSG/NOTICE queue. Connections retry indefinitely with adapter-owned exponential backoff from 5 to 120 seconds, reset after registration. `outboundDelayMs` defaults to the legacy-compatible 2000 ms and must be positive. Never commit real passwords.
 
 Environment overrides:
 

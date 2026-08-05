@@ -3,6 +3,10 @@ import { ircCasefold } from "../core/text.js";
 import { sanitizeIrcText } from "../core/format.js";
 import { OutboundQueue, resolveOutboundDelayMs } from "./outbound-queue.js";
 import {
+  RegistrationPolicy,
+  ReconnectController,
+} from "./reconnect-controller.js";
+import {
   IrcMembershipState,
   IrcIdentityTracker,
   type IrcCaseMapping,
@@ -26,10 +30,13 @@ export class IrcClientAdapter implements IrcPort {
   readonly #listeners = new Set<(event: IrcEvent) => void>();
   readonly #membership = new IrcMembershipState();
   readonly #outbound: OutboundQueue;
+  readonly #reconnect: ReconnectController;
+  readonly #registration: RegistrationPolicy;
   readonly #identities = new IrcIdentityTracker((nick) =>
     ircCasefold(nick, this.#caseMapping),
   );
   #caseMapping: IrcCaseMapping = "rfc1459";
+  #connectionEnded = true;
 
   constructor(private readonly config: IrcClientConfig) {
     this.#client = new Client({
@@ -40,11 +47,7 @@ export class IrcClientAdapter implements IrcPort {
       config.password === "****"
         ? {}
         : { password: config.password }),
-      reconnect: {
-        attempts: Number.POSITIVE_INFINITY,
-        delay: 5,
-        exponentialBackoff: true,
-      },
+      reconnect: false,
       ctcpReplies: { version: "Wit TypeScript" },
     });
     this.#outbound = new OutboundQueue(
@@ -52,6 +55,28 @@ export class IrcClientAdapter implements IrcPort {
       undefined,
       (error) =>
         console.error(`IRC ${this.config.nick} outbound send failed`, error),
+    );
+    this.#reconnect = new ReconnectController(
+      async () => {
+        const connection = await this.#client.connect(this.config.server, {
+          port: this.config.port,
+          tls: this.config.tls,
+        });
+        if (connection === null) throw new Error("IRC connection failed");
+      },
+      undefined,
+      (error) =>
+        console.error(
+          `IRC ${this.config.nick} connection attempt failed`,
+          error,
+        ),
+    );
+    this.#registration = new RegistrationPolicy(
+      this.#reconnect,
+      config.channels,
+      (channel) => this.#client.join(channel),
+      () => this.#client.disconnect(),
+      () => this.#emit({ type: "registered" }),
     );
     this.#wireEvents();
   }
@@ -66,12 +91,10 @@ export class IrcClientAdapter implements IrcPort {
     return this.#membership.joinedChannels();
   }
   async connect(): Promise<void> {
-    await this.#client.connect(this.config.server, {
-      port: this.config.port,
-      tls: this.config.tls,
-    });
+    await this.#reconnect.start();
   }
   disconnect(reason = "Wit detenido"): void {
+    this.#reconnect.stop();
     this.#outbound.clear();
     this.#client.quit(reason);
   }
@@ -99,23 +122,23 @@ export class IrcClientAdapter implements IrcPort {
   }
 
   #wireEvents(): void {
-    this.#client.on("error", (error) =>
-      console.error(`IRC ${this.config.nick}: ${error.message}`),
-    );
+    this.#client.on("error", (error) => {
+      console.error(`IRC ${this.config.nick}: ${error.message}`);
+      if (error.type === "close") this.#handleDisconnected();
+      else if (["connect", "read"].includes(error.type))
+        this.#reconnect.connectionLost();
+    });
+    this.#client.on("connecting", () => {
+      this.#connectionEnded = false;
+    });
+    this.#client.on("connected", () => {
+      if (this.#reconnect.stopped) this.#client.disconnect();
+    });
     this.#client.on("register", () => {
-      for (const channel of this.config.channels) this.#client.join(channel);
-      this.#emit({ type: "registered" });
+      this.#registration.registered();
     });
-    this.#client.on("disconnected", () => {
-      this.#outbound.clear();
-      this.#membership.clear();
-      this.#identities.clear();
-      try {
-        this.#emit({ type: "disconnected", reason: "connection lost" });
-      } finally {
-        this.#outbound.clear();
-      }
-    });
+    this.#client.on("disconnected", () => this.#handleDisconnected());
+    this.#client.on("raw:error", () => this.#client.disconnect());
     this.#client.on("privmsg:channel", (message) =>
       this.#emit({
         type: "message",
@@ -206,6 +229,20 @@ export class IrcClientAdapter implements IrcPort {
       ircCasefold(left, this.#caseMapping) ===
       ircCasefold(right, this.#caseMapping)
     );
+  }
+  #handleDisconnected(): void {
+    if (this.#connectionEnded) return;
+    this.#connectionEnded = true;
+    this.#outbound.clear();
+    this.#membership.clear();
+    this.#identities.clear();
+    this.#registration.disconnected();
+    try {
+      this.#emit({ type: "disconnected", reason: "connection lost" });
+    } finally {
+      this.#outbound.clear();
+      this.#reconnect.connectionLost();
+    }
   }
   #identity(
     source: { name: string; mask?: { user: string; host: string } } | undefined,

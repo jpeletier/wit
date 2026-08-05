@@ -518,3 +518,13 @@ test("nick changes keep identity and disconnect ends active game without failove
   );
   db.close();
 });
+
+test("stop unsubscribes before disconnect and is idempotent", () => {
+  const { bot, irc, db } = fixture();
+  assert.equal(irc.eventListenerCount, 1);
+  bot.stop();
+  bot.stop();
+  assert.equal(irc.eventListenerCount, 0);
+  assert.equal(irc.disconnectCount, 1);
+  db.close();
+});

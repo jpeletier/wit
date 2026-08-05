@@ -64,7 +64,9 @@ const HELP = [
 
 export class WitBot {
   readonly #sessions = new Map<string, Session>();
+  readonly #unsubscribe: () => void;
   #timer: NodeJS.Timeout | undefined;
+  #stopped = false;
   constructor(
     private readonly irc: IrcPort,
     private readonly games: GameRepository,
@@ -74,7 +76,7 @@ export class WitBot {
     private readonly random: RandomSource,
     private readonly options: BotOptions,
   ) {
-    irc.onEvent((event) => this.handle(event));
+    this.#unsubscribe = irc.onEvent((event) => this.handle(event));
   }
 
   async start(): Promise<void> {
@@ -82,8 +84,12 @@ export class WitBot {
     this.#timer = setInterval(() => this.tick(), 1_000);
   }
   stop(): void {
+    if (this.#stopped) return;
+    this.#stopped = true;
     if (this.#timer !== undefined) clearInterval(this.#timer);
+    this.#timer = undefined;
     this.#endAll("Bot detenido");
+    this.#unsubscribe();
     this.irc.disconnect();
   }
 

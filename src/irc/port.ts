@@ -140,6 +140,7 @@ export class FakeIrcPort implements IrcPort {
   }> = [];
   readonly #listeners = new Set<(event: IrcEvent) => void>();
   readonly state = new IrcMembershipState();
+  disconnectCount = 0;
   constructor(public nick = "Wit") {}
   get caseMapping(): IrcCaseMapping {
     return this.state.caseMapping;
@@ -154,6 +155,7 @@ export class FakeIrcPort implements IrcPort {
     this.emit({ type: "registered" });
   }
   disconnect(reason?: string): void {
+    this.disconnectCount++;
     this.emit(
       reason === undefined
         ? { type: "disconnected" }
@@ -182,6 +184,9 @@ export class FakeIrcPort implements IrcPort {
   onEvent(listener: (event: IrcEvent) => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+  get eventListenerCount(): number {
+    return this.#listeners.size;
   }
   emit(event: IrcEvent): void {
     if (event.type === "join" && event.self) this.state.join(event.channel);
