@@ -1,0 +1,50 @@
+# Runtime data and operational output
+db/
+logs/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.mdb
+*.archive
+*.rar
+*.zip
+
+# Operational configuration and backups (track explicit examples only)
+.env
+.env.*
+!.env.example
+*.cfg.ini
+*.cfg.ini.*
+*.bak
+*.backup
+*.old
+*.orig
+
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+build/
+bin/
+obj/
+*.dll
+*.exe
+*.bin
+*.lib
+*.exp
+*.pdb
+*.opt
+
+# IDE and OS metadata
+.idea/
+.vscode/
+.vs/
+CVS/
+*.suo
+*.user
+*.vbw
+*.DS_Store

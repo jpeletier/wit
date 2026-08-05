@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>peletier.ADODBUtils</name>
+    </assembly>
+    <members>
+        <member name="T:peletier.ADODBUtils.ADOTools">
+            <summary>
+            Collection of useful methods that help use ADO with .NET
+            </summary>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.connectionExecute(ADODB.ConnectionClass,System.String)">
+            <summary>
+            Executes a SQL Query over the given connection
+            </summary>
+            <param name="cn">Connection that will be used to execute the query</param>
+            <param name="cmd">SQL Query</param>
+            <returns></returns>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.MSSQLConnString(System.String,System.String,System.String,System.String)">
+            <summary>
+            Returns a connection string for MSSQL Server
+            </summary>
+            <param name="serverName">Host name of the SQL server</param>
+            <param name="userid">User ID for the connection</param>
+            <param name="password">Password for the connection</param>
+            <param name="databaseName">Database to open</param>
+            <returns>A formmated connection string</returns>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.closeStuff(ADODB.ConnectionClass,ADODB.RecordsetClass)">
+            <summary>
+            Safely closes ADO Connection and Recordset objects
+            </summary>
+            <param name="cn">Connection to close</param>
+            <param name="rc">Recordset to close</param>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.closeStuff(ADODB.ConnectionClass)">
+            <summary>
+            Safely closes an ADO Connection
+            </summary>
+            <param name="cn">Connection to close</param>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.closeStuff(ADODB.RecordsetClass)">
+            <summary>
+            Safely closes an ADO Recordset object
+            </summary>
+            <param name="rc">Recordset to close</param>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.closeRCCN(ADODB.RecordsetClass)">
+            <summary>
+            Safely closes an ADO Recordset object AND its underlying connection
+            </summary>
+            <param name="rc">Recordset to close</param>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.getOpenedConnection(System.String)">
+            <summary>
+            Obtains an opened ADO Connection
+            </summary>
+            <param name="connectionString">Connection string with information to open the connection</param>
+            <returns></returns>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.getOpenedRecordset(System.String,System.String,ADODB.CursorTypeEnum,ADODB.LockTypeEnum)">
+            <summary>
+            Obtains an opened recordset
+            </summary>
+            <param name="source">SQL query</param>
+            <param name="connectionString">Connection string</param>
+            <param name="cursor">Cursor type</param>
+            <param name="lck">Lock type</param>
+            <returns></returns>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.safeString(System.String)">
+            <summary>
+            Ensures that a string is safe to pass to a SQL query
+            </summary>
+            <param name="parmString">The string to filter</param>
+            <returns>A filtered string</returns>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.safeString(System.String,System.Int32)">
+            <summary>
+            Ensures that a string is safe to pass to a SQL query, cropping the end to maxLength if necessary
+            </summary>
+            <param name="parmString">The string to filter and possibly crop</param>
+            <param name="maxLength">Maximum length of the string</param>
+            <returns>A filtered string, cropped to maxLength if neccesary</returns>
+        </member>
+        <member name="M:peletier.ADODBUtils.ADOTools.fieldsToHashtable(ADODB.Fields)">
+            <summary>
+            Converts an ADO Fields collection to a Hashtable.
+            </summary>
+            <param name="flds">Fields collection to convert</param>
+        </member>
+    </members>
+</doc>
