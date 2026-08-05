@@ -184,6 +184,91 @@ test("question selection increments repeat weighting transactionally", () => {
   db.close();
 });
 
+test("question buffer does not retain rows after an update rollback", () => {
+  const db = database();
+  db.exec(
+    `INSERT INTO question_subset_members VALUES(1,1,1,1);
+     INSERT INTO questions VALUES(1,'stale','old',NULL,0,1,1,1,0,NULL);
+     CREATE TRIGGER fail_question_update BEFORE UPDATE OF repeats ON questions
+     BEGIN SELECT RAISE(ABORT,'injected update failure'); END;`,
+  );
+  const repository = new QuestionRepository(db, { next: () => 0 });
+  assert.throws(() => repository.next(1), /injected update failure/u);
+  assert.equal(
+    (
+      db.prepare("SELECT repeats FROM questions WHERE id=1").get() as {
+        repeats: number;
+      }
+    ).repeats,
+    0,
+  );
+  db.exec(`DROP TRIGGER fail_question_update;
+    UPDATE questions SET question='fresh',answer='current' WHERE id=1`);
+  const selected = repository.next(1);
+  assert.equal(selected.text, "fresh");
+  assert.equal(selected.answer, "current");
+  assert.equal(
+    (
+      db.prepare("SELECT repeats FROM questions WHERE id=1").get() as {
+        repeats: number;
+      }
+    ).repeats,
+    1,
+  );
+  db.close();
+});
+
+test("question buffer does not retain rows when COMMIT fails", () => {
+  const db = database();
+  db.exec(
+    "INSERT INTO question_subset_members VALUES(1,1,1,1); INSERT INTO questions VALUES(1,'stale','old',NULL,0,1,1,1,0,NULL)",
+  );
+  let failCommit = true;
+  const wrapped = new Proxy(db, {
+    get(target, property) {
+      if (property === "exec")
+        return (sql: string): void => {
+          if (sql === "COMMIT" && failCommit) {
+            failCommit = false;
+            throw new Error("injected commit failure");
+          }
+          target.exec(sql);
+        };
+      const value = Reflect.get(target, property) as unknown;
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]): unknown => {
+        const result: unknown = Reflect.apply(value, target, args);
+        return result;
+      };
+    },
+  }) as DatabaseSync;
+  const repository = new QuestionRepository(wrapped, { next: () => 0 });
+  assert.throws(() => repository.next(1), /injected commit failure/u);
+  assert.equal(
+    (
+      db.prepare("SELECT repeats FROM questions WHERE id=1").get() as {
+        repeats: number;
+      }
+    ).repeats,
+    0,
+  );
+  db.exec(
+    "UPDATE questions SET question='after commit',answer='current' WHERE id=1",
+  );
+  const selected = repository.next(1);
+  assert.equal(selected.text, "after commit");
+  assert.equal(selected.answer, "current");
+  assert.equal(
+    (
+      db.prepare("SELECT repeats FROM questions WHERE id=1").get() as {
+        repeats: number;
+      }
+    ).repeats,
+    1,
+  );
+  db.close();
+});
+
 test("selector uses weighted subjects, IFS positions, FIFO and refresh mutations", () => {
   const db = database();
   db.exec(`INSERT INTO subjects VALUES(2,'s2',2,1); INSERT INTO question_subset_members VALUES(1,1,1,1);

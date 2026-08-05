@@ -388,7 +388,7 @@ export class QuestionRepository {
       randomInt(this.random, 1, subject.count),
     );
     const placeholders = positions.map(() => "?").join(",");
-    transaction(this.database, () => {
+    const rows = transaction(this.database, () => {
       const rows = this.database
         .prepare(
           `SELECT q.id,q.question text,q.answer,q.subject_id subjectId,s.subject,a.author
@@ -400,10 +400,11 @@ export class QuestionRepository {
         "UPDATE questions SET repeats=COALESCE(repeats,0)+1,random_value=? WHERE id=?",
       );
       for (const question of rows) {
-        buffer.questions.push(question);
         update.run(randomInt(this.random, 1, 10_000), question.id);
       }
+      return rows;
     });
+    buffer.questions.push(...rows);
   }
 }
 
