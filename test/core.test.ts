@@ -47,10 +47,13 @@ test("IRC text sanitizer collapses unsafe separators and preserves Unicode and m
   );
 });
 
-test("definition ellipsis uses the original length", () => {
+test("definition excerpts sanitize and budget source before separator expansion", () => {
   assert.equal(definitionExcerpt("short", 10), "short");
   assert.equal(definitionExcerpt("12345678901", 10), "1234567890 ...");
   assert.equal(definitionExcerpt("12345\r\n\0\n67890", 10), "12345 6789 ...");
+  assert.equal(definitionExcerpt("A\u0002B\u0002C", 4), "A || B ||  ...");
+  assert.equal(definitionExcerpt("12\r\n\0\n34\u000256", 6), "12 34 ||  ...");
+  assert.equal(definitionExcerpt("áé😊x", 3), "áé😊 ...");
 });
 
 test("lookup keys preserve accents and mojibake repair is strict and reversible", () => {

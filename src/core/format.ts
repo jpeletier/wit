@@ -23,8 +23,8 @@ export function vbRound(value: number): number {
 }
 
 export function definitionExcerpt(value: string, limit = 100): string {
-  const normalized = sanitizeIrcText(value).replaceAll("\u0002", " || ");
-  return normalized.length > limit
-    ? `${normalized.slice(0, limit)} ...`
-    : normalized;
+  const source = [...sanitizeIrcText(value)];
+  const truncated = source.length > limit;
+  const excerpt = source.slice(0, limit).join("").replaceAll("\u0002", " || ");
+  return truncated ? `${excerpt} ...` : excerpt;
 }
