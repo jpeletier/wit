@@ -227,6 +227,59 @@ test("numeric Trivia displays submitted expression, canonical result, author and
   db.close();
 });
 
+test("text Trivia always reveals the canonical answer for flexible matches", () => {
+  for (const submitted of [
+    "nueva york",
+    "NUEVA YORK",
+    "York Nueva",
+    "en York Nueva ciudad",
+  ]) {
+    const { bot, irc, db } = fixture();
+    db.exec("UPDATE questions SET answer='Nueva York' WHERE id=1");
+    const user = { identity: "u", nick: "Ana" };
+    irc.emit({
+      type: "join",
+      channel: "#c",
+      user: { identity: "bot", nick: "Wit" },
+      self: true,
+    });
+    bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
+    for (let tick = 0; tick < 6; tick++) bot.tick();
+    bot.handle({ type: "message", channel: "#c", user, text: submitted });
+    const reveal = irc.sent.find((entry) =>
+      entry.text.includes("La respuesta era"),
+    );
+    assert.ok(reveal?.text.includes("\u0002Nueva York\u0002"));
+    assert.equal(reveal?.text.includes("="), false);
+    db.close();
+  }
+});
+
+test("numeric Trivia displays literals once and expressions with canonical results", () => {
+  for (const [submitted, expected] of [
+    ["42", "\u000242\u0002"],
+    ["6*7", "\u00026*7=42\u0002"],
+  ] as const) {
+    const { bot, irc, db } = fixture();
+    db.exec("UPDATE questions SET answer='42' WHERE id=1");
+    const user = { identity: "u", nick: "Ana" };
+    irc.emit({
+      type: "join",
+      channel: "#c",
+      user: { identity: "bot", nick: "Wit" },
+      self: true,
+    });
+    bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
+    for (let tick = 0; tick < 6; tick++) bot.tick();
+    bot.handle({ type: "message", channel: "#c", user, text: submitted });
+    const reveal = irc.sent.find((entry) =>
+      entry.text.includes("La respuesta era"),
+    );
+    assert.ok(reveal?.text.includes(expected));
+    db.close();
+  }
+});
+
 test("Trivia sanitizes database question text and line-broken repeated answers", () => {
   const { bot, irc, db } = fixture();
   db.exec(`UPDATE questions

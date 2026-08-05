@@ -50,7 +50,9 @@ test("numeric Trivia uses its injected random source for deterministic dice", ()
     next: () => draws.shift() ?? 0,
   });
   for (let tick = 0; tick < 6; tick++) game.tick();
-  assert.equal(game.submit("Ana", "1d6")?.type, "correct");
+  const result = game.submit("Ana", "1d6");
+  assert.equal(result?.type, "correct");
+  if (result?.type === "correct") assert.equal(result.answerType, "numeric");
   assert.equal(draws.length, 0);
 });
 
@@ -78,7 +80,10 @@ test("round stages, score tiers and displayed maximum use banker rounding", () =
   game.tick();
   const result = game.submit("Ana", "MADRID");
   assert.equal(result?.type, "correct");
-  if (result?.type === "correct") assert.equal(result.points, 62);
+  if (result?.type === "correct") {
+    assert.equal(result.answerType, "text");
+    assert.equal(result.points, 62);
+  }
   assert.deepEqual(game.tick(), []);
   assert.deepEqual(game.tick(), [{ type: "complete" }]);
 });

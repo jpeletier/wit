@@ -438,9 +438,9 @@ export class WitBot {
     } else if (event.type === "correct") {
       const seconds = event.seconds === 1 ? "segundo" : "segundos";
       const answer =
-        event.submitted === event.answer
-          ? event.answer
-          : `${event.submitted}=${event.answer}`;
+        event.answerType === "numeric" && event.submitted !== event.answer
+          ? `${event.submitted}=${event.answer}`
+          : event.answer;
       this.irc.say(
         channel,
         `${mirc.color(`¡¡${mirc.bold(event.nick)} acertó en ${mirc.underline(String(event.seconds))} ${seconds}!!. La respuesta era ${mirc.bold(answer)}`, 7)}. ${mirc.bold(mirc.color(` ${event.points} puntos más para ${mirc.underline(event.nick)}`, 7))}${author(event.question)}`,

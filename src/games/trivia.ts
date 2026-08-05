@@ -26,6 +26,7 @@ export type TriviaEvent =
       nick: string;
       submitted: string;
       answer: string;
+      answerType: "text" | "numeric";
       question: TriviaQuestion;
       seconds: number;
       points: number;
@@ -185,6 +186,7 @@ export class TriviaGame {
       type: "correct",
       nick,
       submitted: text,
+      answerType: this.#numeric === undefined ? "text" : "numeric",
       answer:
         this.#numeric === undefined
           ? question.answer.trim()
