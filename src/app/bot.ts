@@ -149,6 +149,9 @@ export class WitBot {
       case "disconnected":
         this.#endAll("La partida terminó porque el bot se desconectó");
         break;
+      case "caseMapping":
+        this.#rekeySessions();
+        break;
       case "registered":
       case "membership":
         break;
@@ -669,6 +672,9 @@ export class WitBot {
     const session = this.#sessions.get(key);
     if (session === undefined) return;
     this.#sessions.delete(key);
+    this.#finishSession(session, text);
+  }
+  #finishSession(session: Session, text?: string): void {
     if (text !== undefined) {
       try {
         this.irc.say(session.channel, text);
@@ -689,6 +695,27 @@ export class WitBot {
           `${finalizationMessage}; IRC error: ${message(sendError)}`,
         );
       }
+    }
+  }
+  #rekeySessions(): void {
+    const grouped = new Map<string, Session[]>();
+    for (const session of this.#sessions.values()) {
+      const key = this.#key(session.channel);
+      const sessions = grouped.get(key) ?? [];
+      sessions.push(session);
+      grouped.set(key, sessions);
+    }
+    this.#sessions.clear();
+    for (const [key, sessions] of grouped) {
+      if (sessions.length === 1) {
+        this.#sessions.set(key, sessions[0]!);
+        continue;
+      }
+      for (const session of sessions)
+        this.#finishSession(
+          session,
+          "La partida terminó por un conflicto de CASEMAPPING",
+        );
     }
   }
   #fail(channel: string, error: unknown): void {

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ircCasefold } from "../src/core/text.js";
 import {
   FakeIrcPort,
   IrcIdentityTracker,
@@ -7,14 +8,24 @@ import {
   IrcPresenceCoordinator,
 } from "../src/irc/port.js";
 
-test("IRC state casefolds channels for joins and operator lookup", () => {
-  const state = new IrcMembershipState("rfc1459");
+test("IRC state rekeys joined channels, members and prior snapshots across CASEMAPPING changes", () => {
+  const state = new IrcMembershipState("ascii");
   state.join("#Foo[Bar]");
-  state.setMembers("#foo{bar}", [{ nick: "Op^", prefix: "@" }]);
+  state.setMembers("#Foo[Bar]", [{ nick: "Op^", prefix: "@" }]);
+  state.join("#Past[");
+  state.setMembers("#Past[", [{ nick: "Gone^", prefix: "" }]);
+  state.setMembers("#Past[", []);
+  assert.equal(state.configure("rfc1459", "(ov)@+"), true);
   assert.equal(state.isJoined("#FOO{BAR}"), true);
   assert.equal(state.isOperator("#Foo[Bar]", "op~"), true);
+  assert.deepEqual(state.memberNicks("#past{"), ["Gone^"]);
   state.rename("op~", "NewOp");
   assert.equal(state.isOperator("#foo{bar}", "newop"), true);
+  assert.equal(state.configure("ascii", "(ov)@+"), true);
+  assert.equal(state.isJoined("#foo[bar]"), true);
+  assert.equal(state.isJoined("#foo{bar}"), false);
+  assert.equal(state.isOperator("#foo[bar]", "newop"), true);
+  assert.equal(state.joinedChannels().length, 2);
 });
 
 test("fake adapter tracks self join, part, kick and disconnect", () => {
@@ -43,6 +54,20 @@ test("identity tracker is stable for one mask and replaces a missed recycled nic
   assert.equal(tracker.resolve("ANA", firstMask), first);
   assert.notEqual(tracker.resolve("Bea", firstMask), first);
   assert.notEqual(tracker.resolve("Ana", secondMask), first);
+});
+
+test("identity tracker rekeys original nicks and preserves NICK continuity", () => {
+  let mapping: "ascii" | "rfc1459" = "ascii";
+  const tracker = new IrcIdentityTracker((nick) => ircCasefold(nick, mapping));
+  const mask = { user: "shared", host: "example.test" };
+  const identity = tracker.resolve("Ana[", mask);
+  mapping = "rfc1459";
+  tracker.rekey();
+  assert.equal(tracker.resolve("Ana{", mask), identity);
+  assert.equal(tracker.rename("Ana{", "Carla^", mask), identity);
+  mapping = "ascii";
+  tracker.rekey();
+  assert.equal(tracker.resolve("Carla^", mask), identity);
 });
 
 test("presence coordinator forgets QUIT and recycled nick identity", () => {

@@ -225,15 +225,23 @@ export class IrcClientAdapter implements IrcPort {
     });
     this.#client.on("raw", (message) => {
       if (message.command !== "rpl_isupport") return;
+      let caseMapping = this.#caseMapping;
       for (const parameter of message.params) {
         const match = /^CASEMAPPING=(ascii|rfc1459|strict-rfc1459)$/iu.exec(
           parameter,
         );
         if (match !== null)
-          this.#caseMapping = match[1]!.toLowerCase() as IrcCaseMapping;
-        this.#membership.caseMapping = this.#caseMapping;
-        this.#membership.prefix =
-          this.#client.state.isupport.PREFIX ?? "(qaohv)~&@%+";
+          caseMapping = match[1]!.toLowerCase() as IrcCaseMapping;
+      }
+      const changed = caseMapping !== this.#caseMapping;
+      this.#caseMapping = caseMapping;
+      this.#membership.configure(
+        caseMapping,
+        this.#client.state.isupport.PREFIX ?? "(qaohv)~&@%+",
+      );
+      if (changed) {
+        this.#identities.rekey();
+        this.#emit({ type: "caseMapping", caseMapping });
       }
     });
   }

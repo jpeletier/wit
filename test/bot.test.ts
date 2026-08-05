@@ -151,6 +151,104 @@ test("commands require membership, STOP matches type, defaults/clamps and self-k
   db.close();
 });
 
+test("active Trivia survives late CASEMAPPING for messages and completion", () => {
+  const { bot, irc, db } = fixture();
+  const user = { identity: "u", nick: "Ana" };
+  irc.caseMapping = "ascii";
+  irc.emit({
+    type: "join",
+    channel: "#Trivia[",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({
+    type: "privateMessage",
+    user,
+    text: "TRIVIAL #Trivia[ 5",
+  });
+  irc.caseMapping = "rfc1459";
+  assert.equal(irc.isJoined("#trivia{"), true);
+  for (let round = 0; round < 5; round++) {
+    for (let tick = 0; tick < 6; tick++) bot.tick();
+    bot.handle({
+      type: "message",
+      channel: "#trivia{",
+      user,
+      text: "Respuesta",
+    });
+  }
+  bot.tick();
+  bot.tick();
+  assert.equal(
+    (
+      db
+        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
+        .get() as { count: number }
+    ).count,
+    1,
+  );
+  db.close();
+});
+
+test("operator STOP finds a session after CASEMAPPING changes", () => {
+  const { bot, irc, db } = fixture();
+  const user = { identity: "u", nick: "Ana^" };
+  irc.caseMapping = "ascii";
+  irc.emit({
+    type: "join",
+    channel: "#Stop[",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  irc.setOperator("#Stop[", "Ana^");
+  bot.handle({ type: "privateMessage", user, text: "TRIVIAL #Stop[ 5" });
+  irc.caseMapping = "rfc1459";
+  bot.handle({
+    type: "privateMessage",
+    user: { identity: "u", nick: "Ana~" },
+    text: "TRIVIAL #stop{ STOP",
+  });
+  assert.equal(
+    (
+      db
+        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
+        .get() as { count: number }
+    ).count,
+    1,
+  );
+  db.close();
+});
+
+test("CASEMAPPING session collisions finalize every game without overwrite", () => {
+  const { bot, irc, db } = fixture();
+  const user = { identity: "u", nick: "Ana" };
+  irc.caseMapping = "ascii";
+  for (const channel of ["#Game[", "#Game{"])
+    irc.emit({
+      type: "join",
+      channel,
+      user: { identity: "bot", nick: "Wit" },
+      self: true,
+    });
+  bot.handle({ type: "privateMessage", user, text: "TRIVIAL #Game[ 5" });
+  bot.handle({ type: "privateMessage", user, text: "TRIVIAL #Game{ 5" });
+  irc.caseMapping = "rfc1459";
+  assert.equal(
+    (
+      db
+        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
+        .get() as { count: number }
+    ).count,
+    2,
+  );
+  assert.equal(
+    irc.sent.filter((entry) => entry.text.includes("conflicto de CASEMAPPING"))
+      .length,
+    2,
+  );
+  db.close();
+});
+
 test("deterministic full Trivia transcript", () => {
   const { bot, irc, db } = fixture();
   const user = { identity: "u", nick: "Ana" };

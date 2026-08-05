@@ -14,6 +14,12 @@ export interface IrcMember {
 interface TrackedIdentity {
   identity: string;
   mask: string | undefined;
+  nick: string;
+}
+
+interface ChannelMembers {
+  channel: string;
+  members: IrcMember[];
 }
 
 export class IrcIdentityTracker {
@@ -28,7 +34,7 @@ export class IrcIdentityTracker {
       return existing.identity;
     const base = maskKey === undefined ? `nick:${key}` : maskKey;
     const identity = `${base}#${++this.#sequence}`;
-    this.#byNick.set(key, { identity, mask: maskKey });
+    this.#byNick.set(key, { identity, mask: maskKey, nick });
     return identity;
   }
   rename(
@@ -41,6 +47,7 @@ export class IrcIdentityTracker {
     const identity = existing?.identity ?? this.resolve(previousNick, mask);
     const tracked = existing ?? this.#byNick.get(previousKey)!;
     if (tracked.mask === undefined) tracked.mask = identityMask(mask);
+    tracked.nick = nick;
     this.#byNick.delete(previousKey);
     this.#byNick.set(this.fold(nick), tracked);
     return identity;
@@ -50,6 +57,14 @@ export class IrcIdentityTracker {
   }
   get trackedCount(): number {
     return this.#byNick.size;
+  }
+  rekey(): void {
+    const identities = [...this.#byNick.values()];
+    this.#byNick.clear();
+    for (const tracked of identities) {
+      const key = this.fold(tracked.nick);
+      if (!this.#byNick.has(key)) this.#byNick.set(key, tracked);
+    }
   }
   clear(): void {
     this.#byNick.clear();
@@ -67,6 +82,7 @@ function identityMask(
 export type IrcEvent =
   | { type: "registered" }
   | { type: "disconnected"; reason?: string }
+  | { type: "caseMapping"; caseMapping: IrcCaseMapping }
   | { type: "message"; channel: string; user: IrcUser; text: string }
   | { type: "privateMessage"; user: IrcUser; text: string }
   | { type: "join"; channel: string; user: IrcUser; self: boolean }
@@ -83,12 +99,18 @@ export type IrcEvent =
 
 export class IrcMembershipState {
   readonly #joined = new Map<string, string>();
-  readonly #members = new Map<string, IrcMember[]>();
-  readonly #previousMembers = new Map<string, IrcMember[]>();
+  readonly #members = new Map<string, ChannelMembers>();
+  readonly #previousMembers = new Map<string, ChannelMembers>();
+  #caseMapping: IrcCaseMapping;
   constructor(
-    public caseMapping: IrcCaseMapping = "rfc1459",
+    caseMapping: IrcCaseMapping = "rfc1459",
     public prefix = "(qaohv)~&@%+",
-  ) {}
+  ) {
+    this.#caseMapping = caseMapping;
+  }
+  get caseMapping(): IrcCaseMapping {
+    return this.#caseMapping;
+  }
   key(value: string): string {
     return ircCasefold(value, this.caseMapping);
   }
@@ -114,34 +136,36 @@ export class IrcMembershipState {
   setMembers(channel: string, members: readonly IrcMember[]): void {
     const channelKey = this.key(channel);
     const previous = this.#members.get(channelKey);
-    if (previous !== undefined && previous.length > 0)
+    if (previous !== undefined && previous.members.length > 0)
       this.#previousMembers.set(channelKey, previous);
-    this.#members.set(channelKey, [...members]);
+    this.#members.set(channelKey, { channel, members: [...members] });
   }
   memberNicks(channel: string): readonly string[] {
     const channelKey = this.key(channel);
-    const current = this.#members.get(channelKey) ?? [];
+    const current = this.#members.get(channelKey)?.members ?? [];
     const members =
       current.length > 0
         ? current
-        : (this.#previousMembers.get(channelKey) ?? current);
+        : (this.#previousMembers.get(channelKey)?.members ?? current);
     return members.map((member) => member.nick);
   }
   addMember(channel: string, nick: string): void {
     const channelKey = this.key(channel);
-    const members = this.#members.get(channelKey) ?? [];
+    const members = this.#members.get(channelKey)?.members ?? [];
     if (!members.some((member) => this.key(member.nick) === this.key(nick)))
       members.push({ nick, prefix: "" });
-    this.#members.set(channelKey, members);
+    this.#members.set(channelKey, { channel, members });
   }
   removeMember(channel: string, nick: string): void {
     const channelKey = this.key(channel);
-    const members = this.#members.get(channelKey);
-    if (members === undefined) return;
-    this.#members.set(
-      channelKey,
-      members.filter((member) => this.key(member.nick) !== this.key(nick)),
-    );
+    const state = this.#members.get(channelKey);
+    if (state === undefined) return;
+    this.#members.set(channelKey, {
+      channel: state.channel,
+      members: state.members.filter(
+        (member) => this.key(member.nick) !== this.key(nick),
+      ),
+    });
   }
   removeMemberEverywhere(nick: string): void {
     for (const channel of this.#members.keys())
@@ -149,18 +173,38 @@ export class IrcMembershipState {
   }
   hasMember(nick: string): boolean {
     return [...this.#members.entries()].some(
-      ([channel, members]) =>
+      ([channel, state]) =>
         this.#joined.has(channel) &&
-        members.some((member) => this.key(member.nick) === this.key(nick)),
+        state.members.some(
+          (member) => this.key(member.nick) === this.key(nick),
+        ),
     );
   }
   rename(previousNick: string, nick: string): void {
-    for (const members of this.#members.values()) {
-      const member = members.find(
+    for (const state of this.#members.values()) {
+      const member = state.members.find(
         (candidate) => this.key(candidate.nick) === this.key(previousNick),
       );
       if (member !== undefined) member.nick = nick;
     }
+  }
+  configure(caseMapping: IrcCaseMapping, prefix: string): boolean {
+    const changed = this.#caseMapping !== caseMapping;
+    if (changed) {
+      const joined = [...this.#joined.values()];
+      const members = [...this.#members.values()];
+      const previousMembers = [...this.#previousMembers.values()];
+      this.#caseMapping = caseMapping;
+      this.#joined.clear();
+      this.#members.clear();
+      this.#previousMembers.clear();
+      for (const channel of joined)
+        this.#joined.set(this.key(channel), channel);
+      this.#restoreMembers(this.#members, members);
+      this.#restoreMembers(this.#previousMembers, previousMembers);
+    }
+    this.prefix = prefix;
+    return changed;
   }
   isOperator(channel: string, nick: string): boolean {
     const match = /^\(([^)]+)\)(.+)$/u.exec(this.prefix);
@@ -171,11 +215,34 @@ export class IrcMembershipState {
         ["q", "a", "o"].includes(modes[index] ?? ""),
       ),
     );
-    return (this.#members.get(this.key(channel)) ?? []).some(
+    return (this.#members.get(this.key(channel))?.members ?? []).some(
       (member) =>
         this.key(member.nick) === this.key(nick) &&
         operators.has(member.prefix),
     );
+  }
+  #restoreMembers(
+    target: Map<string, ChannelMembers>,
+    states: readonly ChannelMembers[],
+  ): void {
+    for (const state of states) {
+      const key = this.key(state.channel);
+      const existing = target.get(key);
+      if (existing === undefined) {
+        target.set(key, {
+          channel: state.channel,
+          members: [...state.members],
+        });
+        continue;
+      }
+      for (const member of state.members)
+        if (
+          !existing.members.some(
+            (candidate) => this.key(candidate.nick) === this.key(member.nick),
+          )
+        )
+          existing.members.push(member);
+    }
   }
 }
 
@@ -250,7 +317,11 @@ export class FakeIrcPort implements IrcPort {
     return this.state.caseMapping;
   }
   set caseMapping(value: IrcCaseMapping) {
-    this.state.caseMapping = value;
+    this.setCaseMapping(value);
+  }
+  setCaseMapping(value: IrcCaseMapping, prefix = this.state.prefix): void {
+    if (this.state.configure(value, prefix))
+      this.emit({ type: "caseMapping", caseMapping: value });
   }
   get joinedChannels(): readonly string[] {
     return this.state.joinedChannels();
