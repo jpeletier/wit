@@ -239,7 +239,7 @@ export class WitBot {
     if ((type === "trivia" || type === "cyl") && triviaCount >= 2) {
       this.irc.notice(
         user.nick,
-        "Estoy en demasiados juegos. Inténtalo de nuevo más tarde.",
+        `Estoy en demasiados ${type === "trivia" ? "trivials" : "juegos"}. Inténtalo de nuevo más tarde.`,
       );
       return;
     }
@@ -619,7 +619,7 @@ export class WitBot {
     const command = session.type === "trivia" ? "TRIVIAL" : "CYL";
     this.irc.say(
       session.channel,
-      `Para volver a jugar, dile a ${this.irc.nick} en privado --> ${mirc.bold(`${command} ${session.channel} ${session.count}`)}`,
+      `Para volver a jugar, dile a ${this.irc.nick} o a cualquier otro Wit en privado --> ${mirc.bold(`${command} ${session.channel} ${session.count}`)}`,
     );
     this.#end(session.channel);
   }

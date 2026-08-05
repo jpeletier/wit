@@ -163,7 +163,7 @@ test("deterministic full Trivia transcript", () => {
   assert.equal(transcript.length, 34);
   assert.equal(
     createHash("sha256").update(JSON.stringify(transcript)).digest("hex"),
-    "7fe5005ca214054c8efb8fb1e229c2ab323574e4743378c7a88d1262c65d39b5",
+    "ffa3d81758d160d0f1766fb9ea61f73c79768c75c769dfd534568ae2342e2611",
   );
   assert.ok(transcript.at(-1)?.includes("TRIVIAL #c 5"));
   db.close();
@@ -200,7 +200,7 @@ test("deterministic full CYL transcript", () => {
   assert.equal(transcript.length, 13);
   assert.equal(
     createHash("sha256").update(JSON.stringify(transcript)).digest("hex"),
-    "7ba36bf3c0477910aa2fa0f6a0a1bbba2d366c08921c76e33b09581e1d579713",
+    "141d6101a62880f2b1d768b9130a9de643c265dbf4d148802fb15731cb718033",
   );
   assert.ok(transcript.at(-1)?.includes("CYL #c 1"));
   db.close();
@@ -391,8 +391,7 @@ test("a bot allows two concurrent Trivia games and blocks a third and CYL", () =
   bot.handle({ type: "privateMessage", user, text: "CYL #d 5" });
   assert.equal(
     irc.sent.filter(
-      (entry) =>
-        entry.kind === "notice" && entry.text.includes("demasiados juegos"),
+      (entry) => entry.kind === "notice" && entry.text.includes("demasiados"),
     ).length,
     2,
   );
