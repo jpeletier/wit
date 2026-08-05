@@ -14,8 +14,16 @@ export function transaction<T>(database: DatabaseSync, operation: () => T): T {
     const result = operation();
     database.exec("COMMIT");
     return result;
-  } catch (error) {
-    database.exec("ROLLBACK");
-    throw error;
+  } catch (primaryError) {
+    try {
+      database.exec("ROLLBACK");
+    } catch (rollbackError) {
+      throw new AggregateError(
+        [primaryError, rollbackError],
+        "Transaction failed and rollback failed",
+        { cause: primaryError },
+      );
+    }
+    throw primaryError;
   }
 }
