@@ -31,6 +31,14 @@ test("VB banker rounding and mIRC controls are preserved", () => {
   assert.equal(mirc.color("x", 5), "\u00035x\u0003");
 });
 
+test("mIRC reset spacer survives irc-client-ts trailing whitespace serialization", () => {
+  const serialized = `PRIVMSG #canal ${mirc.reset}`.trimEnd() + "\r\n";
+  assert.equal(serialized, "PRIVMSG #canal \u000f\r\n");
+  assert.notEqual(serialized, "PRIVMSG #canal\r\n");
+  assert.equal(mirc.reset.replaceAll(/\p{C}/gu, ""), "");
+  assert.equal(sanitizeIrcText(mirc.reset), mirc.reset);
+});
+
 test("IRC text sanitizer collapses unsafe separators and preserves Unicode and mIRC controls", () => {
   const controls = "\u0002\u0003\u000f\u0016\u001d\u001f";
   assert.equal(

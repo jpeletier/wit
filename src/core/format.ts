@@ -1,6 +1,7 @@
 const CONTROL = "\u0003";
 
 export const mirc = {
+  reset: "\u000f",
   bold: (text: string): string => `\u0002${text}\u0002`,
   underline: (text: string): string => `\u001f${text}\u001f`,
   color: (text: string, foreground: number, background?: number): string =>

@@ -301,7 +301,7 @@ export class WitBot {
         channel,
         `La puntuación máxima por respuesta es de${mirc.color(` ${triviaPoints(5, context.multiplier)}`, 4)} puntos.`,
       );
-      this.irc.say(channel, " ");
+      this.irc.say(channel, mirc.reset);
     } catch (error) {
       this.#end(channel);
       throw error;

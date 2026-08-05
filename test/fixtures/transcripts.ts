@@ -4,7 +4,7 @@ export const triviaTranscript = [
   "\u00038,1 wIt TrIvIa \u0003 Comienza una nueva partida de 5 preguntas iniciada por\u00034 Ana\u0003",
   "Torneo\u000312 Torneo oficial de #c en la 305ª liga de trivial.\u0003 Preguntas:\u000312 General\u0003",
   "La puntuación máxima por respuesta es de\u00034 100\u0003 puntos.",
-  " ",
+  "\u000f",
   " \u000311,0`%\u00030,11%,\u000312,11`%\u000311,12%,\u00032,12`%\u000312,2%,\u00038,2 wIt TrIvIa \u000312,2`%\u00032,12%,\u000311,12`%\u000312,11%,\u00030,11`%\u000311,0%, \u00035 Pregunta 1/5. TEMA: Tema.\u0003",
   "\u00032Pregunta 1\u0003 (1 pal.)",
   "\u00032->\u0003 --------- ",
