@@ -1,4 +1,5 @@
 import { writeFileSync } from "node:fs";
+import { basename } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { lookupKey, repairMojibake } from "../src/core/text.js";
 import { auditReport, sourceDatabase, targetDatabase } from "./paths.js";
@@ -12,7 +13,7 @@ const applied = auditOnly ? 0 : corrections.length;
 if (auditOnly) {
   writeFileSync(
     auditReport,
-    `${JSON.stringify({ source: "trivial.sqlite", mode: "audit-only", mojibake: { proposed, applied }, corrections }, null, 2)}\n`,
+    `${JSON.stringify({ source: basename(sourceDatabase), mode: "audit-only", mojibake: { proposed, applied }, corrections }, null, 2)}\n`,
     { mode: 0o600 },
   );
   console.log(JSON.stringify({ auditOnly: true, proposed }));
@@ -123,8 +124,8 @@ try {
     .run(proposed, applied);
   database.exec("COMMIT; PRAGMA optimize");
   const report = {
-    source: "trivial.sqlite",
-    target: "wit.sqlite",
+    source: basename(sourceDatabase),
+    target: basename(targetDatabase),
     counts,
     mojibake: { proposed, applied },
     corrections,
