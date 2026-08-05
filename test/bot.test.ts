@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -11,6 +10,7 @@ import {
   QuestionRepository,
 } from "../src/db/repositories.js";
 import { FakeIrcPort } from "../src/irc/port.js";
+import { cylTranscript, triviaTranscript } from "./fixtures/transcripts.js";
 
 function fixture(): {
   bot: WitBot;
@@ -28,7 +28,7 @@ function fixture(): {
     INSERT INTO questions VALUES(3,'Pregunta 3','Respuesta',NULL,0,1,1,1,3,NULL);
     INSERT INTO questions VALUES(4,'Pregunta 4','Respuesta',NULL,0,1,1,1,4,NULL);
     INSERT INTO questions VALUES(5,'Pregunta 5','Respuesta',NULL,0,1,1,1,5,NULL);
-    INSERT INTO dictionary VALUES(1,'AA','aa','doble a','OK');
+    INSERT INTO dictionary VALUES(1,'aa','aa','doble a','OK');
     INSERT INTO dictionary VALUES(2,'AAA','aaa','triple a','OK');
     INSERT INTO dictionary VALUES(3,'AAAA','aaaa','cuádruple a','OK');`);
   const irc = new FakeIrcPort();
@@ -160,12 +160,7 @@ test("deterministic full Trivia transcript", () => {
   const transcript = irc.sent
     .filter((entry) => entry.kind === "message")
     .map((entry) => entry.text);
-  assert.equal(transcript.length, 34);
-  assert.equal(
-    createHash("sha256").update(JSON.stringify(transcript)).digest("hex"),
-    "ffa3d81758d160d0f1766fb9ea61f73c79768c75c769dfd534568ae2342e2611",
-  );
-  assert.ok(transcript.at(-1)?.includes("TRIVIAL #c 5"));
+  assert.deepEqual(transcript, triviaTranscript);
   db.close();
 });
 
@@ -197,12 +192,7 @@ test("deterministic full CYL transcript", () => {
   const transcript = irc.sent
     .filter((entry) => entry.kind === "message")
     .map((entry) => entry.text);
-  assert.equal(transcript.length, 13);
-  assert.equal(
-    createHash("sha256").update(JSON.stringify(transcript)).digest("hex"),
-    "141d6101a62880f2b1d768b9130a9de643c265dbf4d148802fb15731cb718033",
-  );
-  assert.ok(transcript.at(-1)?.includes("CYL #c 1"));
+  assert.deepEqual(transcript, cylTranscript);
   db.close();
 });
 
@@ -368,6 +358,43 @@ test("finalization failure is visible and still removes the session", () => {
       (entry) =>
         entry.text.includes("Error al finalizar") &&
         entry.text.includes("finalize failed"),
+    ),
+  );
+  bot.handle({ type: "message", channel: "#c", user, text: "?2" });
+  assert.ok(irc.sent.some((entry) => entry.text === "Ana: 2=2"));
+  db.close();
+});
+
+test("disconnect removes session when both finalization and IRC error reporting fail", () => {
+  const { bot, irc, db, games } = fixture();
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#c",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
+  games.finishGame = () => {
+    throw new Error("finalize failed");
+  };
+  const originalSay = irc.say.bind(irc);
+  const originalError = console.error;
+  const logs: string[] = [];
+  irc.say = () => {
+    throw new Error("connection closed");
+  };
+  console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+  try {
+    assert.doesNotThrow(() => irc.emit({ type: "disconnected" }));
+  } finally {
+    irc.say = originalSay;
+    console.error = originalError;
+  }
+  assert.ok(
+    logs.some(
+      (line) =>
+        line.includes("finalize failed") && line.includes("connection closed"),
     ),
   );
   bot.handle({ type: "message", channel: "#c", user, text: "?2" });

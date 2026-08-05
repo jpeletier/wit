@@ -556,7 +556,7 @@ export class WitBot {
 
   #letterResult(round: LetterRound, winners: readonly LetterWinner[]): string {
     const first = winners[0]!;
-    let text = `${mirc.bold(first.entry.word)} (${first.nick} ${mirc.color(`+${first.score}`, 4)}) `;
+    let text = `${mirc.bold(first.word)} (${first.nick} ${mirc.color(`+${first.score}`, 4)}) `;
     const definition = round.definition();
     if (definition !== undefined) text += `: "${definition}"`;
     if (winners.length > 1)
@@ -564,7 +564,7 @@ export class WitBot {
         .slice(1)
         .map(
           (winner) =>
-            `${winner.entry.word} (${winner.nick} ${mirc.color(`+${winner.score}`, 4)}) `,
+            `${winner.word} (${winner.nick} ${mirc.color(`+${winner.score}`, 4)}) `,
         )
         .join("")}`;
     return text;
@@ -665,17 +665,23 @@ export class WitBot {
     if (text !== undefined) {
       try {
         this.irc.say(session.channel, text);
-      } catch {
-        /* finalization must still run when the connection is gone */
+      } catch (error) {
+        console.error(
+          `IRC end message failed for ${session.channel}: ${message(error)}`,
+        );
       }
     }
     try {
       this.games.finishGame(session.gameId);
     } catch (error) {
-      this.irc.say(
-        session.channel,
-        `Error al finalizar la partida: ${message(error)}`,
-      );
+      const finalizationMessage = `Error al finalizar la partida: ${message(error)}`;
+      try {
+        this.irc.say(session.channel, finalizationMessage);
+      } catch (sendError) {
+        console.error(
+          `${finalizationMessage}; IRC error: ${message(sendError)}`,
+        );
+      }
     }
   }
   #fail(channel: string, error: unknown): void {
@@ -683,6 +689,10 @@ export class WitBot {
       this.irc.say(
         channel,
         `Error persistente: ${message(error)}. La partida ha terminado.`,
+      );
+    } catch (sendError) {
+      console.error(
+        `Unable to report game failure in ${channel}: ${message(sendError)}`,
       );
     } finally {
       this.#end(channel);

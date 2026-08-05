@@ -34,7 +34,7 @@ Environment overrides:
 
 Private commands are `HELP`, `DATE`, `TRIVIAL #canal [5-30]`, `CYL #canal [1-30]`, and either game command with `STOP`. The bot must already be joined to the requested channel. Stopping affects only the named game type and requires current channel operator status from IRC NAMES/PREFIX state. Unrecognized game counts default to 20; Trivia counts below five clamp to five, while nonpositive CYL counts are rejected. Each bot permits at most two concurrent Trivia games and blocks CYL while both slots are occupied.
 
-Channel expressions support subsets of `+ - * / ^`, parentheses, decimals, and `NdM` dice. Powers are left-associative for legacy compatibility. Prefix with `?` to force display. Dice are rejected in Cifras and numeric Trivia. Legacy `count#expression` repetition syntax is intentionally omitted because it returns a list rather than a numeric expression.
+Channel expressions support subsets of `+ - * / ^`, parentheses, decimals, and `NdM` dice. Powers are left-associative for legacy compatibility. Prefix with `?` to force display. Numeric Trivia retains deterministic safe dice expressions; dice are rejected only in Cifras. Legacy `count#expression` repetition syntax is intentionally omitted because it returns a list rather than a numeric expression.
 
 Welcome/help notices are sent on every join by default. Set `welcomeOnJoin` to `false` to disable them. Current Trivia questions are intentionally not replayed to late joiners.
 

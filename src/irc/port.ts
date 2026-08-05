@@ -10,6 +10,41 @@ export interface IrcMember {
   prefix: string;
 }
 
+export class IrcIdentityTracker {
+  readonly #byNick = new Map<string, string>();
+  #sequence = 0;
+  constructor(private readonly fold: (nick: string) => string) {}
+  resolve(nick: string, mask?: { user: string; host: string }): string {
+    const key = this.fold(nick);
+    const existing = this.#byNick.get(key);
+    if (existing !== undefined) return existing;
+    const base =
+      mask === undefined
+        ? `nick:${key}`
+        : `${mask.user}@${mask.host}`
+            .normalize("NFC")
+            .toLocaleLowerCase("en-US");
+    const identity = `${base}#${++this.#sequence}`;
+    this.#byNick.set(key, identity);
+    return identity;
+  }
+  rename(
+    previousNick: string,
+    nick: string,
+    mask?: { user: string; host: string },
+  ): string {
+    const previousKey = this.fold(previousNick);
+    const identity =
+      this.#byNick.get(previousKey) ?? this.resolve(previousNick, mask);
+    this.#byNick.delete(previousKey);
+    this.#byNick.set(this.fold(nick), identity);
+    return identity;
+  }
+  clear(): void {
+    this.#byNick.clear();
+  }
+}
+
 export type IrcEvent =
   | { type: "registered" }
   | { type: "disconnected"; reason?: string }

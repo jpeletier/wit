@@ -57,10 +57,17 @@ export function matchesTriviaAnswer(
 export function matchesNumericAnswer(
   expected: number,
   submitted: string,
+  random: RandomSource,
 ): boolean {
   if (submitted.length >= 30) return false;
   try {
-    return calculate(submitted, { dice: false, maxLength: 29 }) === expected;
+    return (
+      calculate(submitted, {
+        dice: true,
+        maxLength: 29,
+        random: () => random.next(),
+      }) === expected
+    );
   } catch {
     return false;
   }
@@ -153,7 +160,7 @@ export class TriviaGame {
     const correct =
       this.#numeric === undefined
         ? matchesTriviaAnswer(question.answer.trim(), text)
-        : matchesNumericAnswer(this.#numeric, text);
+        : matchesNumericAnswer(this.#numeric, text, this.random);
     if (!correct) return undefined;
     const event: TriviaEvent = {
       type: "correct",
@@ -178,9 +185,10 @@ export class TriviaGame {
     let question: TriviaQuestion | undefined;
     for (let attempts = 0; attempts < 1_000; attempts++) {
       const candidate = this.nextQuestion();
-      const words = answerWords(candidate.answer.trim());
+      const answer = candidate.answer.trim();
+      const words = answerWords(answer);
       if (words.length > 0 && words.length <= 10) {
-        question = candidate;
+        question = { ...candidate, answer };
         break;
       }
     }

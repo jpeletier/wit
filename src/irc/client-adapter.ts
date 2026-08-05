@@ -2,6 +2,7 @@ import { Client } from "irc-client-ts";
 import { ircCasefold } from "../core/text.js";
 import {
   IrcMembershipState,
+  IrcIdentityTracker,
   type IrcCaseMapping,
   type IrcEvent,
   type IrcPort,
@@ -20,8 +21,10 @@ export interface IrcClientConfig {
 export class IrcClientAdapter implements IrcPort {
   readonly #client: Client;
   readonly #listeners = new Set<(event: IrcEvent) => void>();
-  readonly #identities = new Map<string, string>();
   readonly #membership = new IrcMembershipState();
+  readonly #identities = new IrcIdentityTracker((nick) =>
+    ircCasefold(nick, this.#caseMapping),
+  );
   #caseMapping: IrcCaseMapping = "rfc1459";
 
   constructor(private readonly config: IrcClientConfig) {
@@ -92,6 +95,7 @@ export class IrcClientAdapter implements IrcPort {
     });
     this.#client.on("disconnected", () => {
       this.#membership.clear();
+      this.#identities.clear();
       this.#emit({ type: "disconnected", reason: "connection lost" });
     });
     this.#client.on("privmsg:channel", (message) =>
@@ -145,11 +149,10 @@ export class IrcClientAdapter implements IrcPort {
     });
     this.#client.on("nick", (message) => {
       const previousNick = message.source?.name ?? "";
-      const identity = this.#identity(message.source);
-      this.#identities.delete(ircCasefold(previousNick, this.#caseMapping));
-      this.#identities.set(
-        ircCasefold(message.params.nick, this.#caseMapping),
-        identity,
+      const identity = this.#identities.rename(
+        previousNick,
+        message.params.nick,
+        message.source?.mask,
       );
       this.#membership.rename(previousNick, message.params.nick);
       this.#emit({
@@ -190,17 +193,7 @@ export class IrcClientAdapter implements IrcPort {
     source: { name: string; mask?: { user: string; host: string } } | undefined,
   ): string {
     if (source === undefined) return "server";
-    const key = ircCasefold(source.name, this.#caseMapping);
-    const existing = this.#identities.get(key);
-    if (existing !== undefined) return existing;
-    const identity =
-      source.mask === undefined
-        ? `nick:${key}`
-        : `${source.mask.user}@${source.mask.host}`
-            .normalize("NFC")
-            .toLocaleLowerCase("en-US");
-    this.#identities.set(key, identity);
-    return identity;
+    return this.#identities.resolve(source.name, source.mask);
   }
   #user(
     source: { name: string; mask?: { user: string; host: string } } | undefined,

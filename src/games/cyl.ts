@@ -13,6 +13,7 @@ export interface DictionaryWord {
 export interface LetterWinner {
   identity: string;
   nick: string;
+  word: string;
   entry: DictionaryWord;
   score: number;
 }
@@ -188,30 +189,24 @@ export class LetterRound {
     if (entry === undefined || (entry.status !== "OK" && entry.status !== "NF"))
       return false;
     if (
-      this.#winners.some(
-        (winner) => lookupKey(winner.entry.word) === lookupKey(entry.word),
-      )
+      this.#winners.some((winner) => lookupKey(winner.word) === lookupKey(word))
     )
       return false;
     const previous = this.#winners.find(
       (winner) => winner.identity === identity,
     );
-    if (
-      previous !== undefined &&
-      [...previous.entry.word].length >= [...entry.word].length
-    )
+    if (previous !== undefined && [...previous.word].length >= [...word].length)
       return false;
     this.#winners = this.#winners.filter(
       (winner) => winner.identity !== identity,
     );
-    this.#winners.push({ identity, nick, entry, score: 0 });
+    this.#winners.push({ identity, nick, word, entry, score: 0 });
     this.#winners.sort(
-      (left, right) =>
-        [...right.entry.word].length - [...left.entry.word].length,
+      (left, right) => [...right.word].length - [...left.word].length,
     );
     this.#winners = this.#winners.slice(0, 3);
     this.#winners.forEach((winner, index) => {
-      winner.score = vbRound(scoreWord(winner.entry.word) / 2 ** index);
+      winner.score = vbRound(scoreWord(winner.word) / 2 ** index);
     });
     return true;
   }

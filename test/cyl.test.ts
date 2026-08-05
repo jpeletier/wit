@@ -38,6 +38,8 @@ test("letter validation trims, matches supplied letters without accents, and dic
     (key) => dictionary.get(key),
   );
   assert.equal(round.submit("u1", "Ana", "  CAMIÓN "), true);
+  assert.equal(round.winners()[0]?.word, "CAMIÓN");
+  assert.equal(round.winners()[0]?.score, scoreWord("CAMIÓN"));
   assert.equal(round.submit("u2", "Bea", "CAMION"), false);
 });
 

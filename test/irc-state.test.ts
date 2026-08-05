@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FakeIrcPort, IrcMembershipState } from "../src/irc/port.js";
+import {
+  FakeIrcPort,
+  IrcIdentityTracker,
+  IrcMembershipState,
+} from "../src/irc/port.js";
 
 test("IRC state casefolds channels for joins and operator lookup", () => {
   const state = new IrcMembershipState("rfc1459");
@@ -28,4 +32,15 @@ test("fake adapter tracks self join, part, kick and disconnect", () => {
   irc.emit({ type: "join", channel: "#Two", user: self, self: true });
   irc.emit({ type: "disconnected" });
   assert.deepEqual(irc.joinedChannels, []);
+});
+
+test("identity tracker separates shared masks and transfers identity on NICK", () => {
+  const tracker = new IrcIdentityTracker((nick) => nick.toLowerCase());
+  const mask = { user: "shared", host: "bouncer.example" };
+  const first = tracker.resolve("Ana", mask);
+  const second = tracker.resolve("Bea", mask);
+  assert.notEqual(first, second);
+  assert.equal(tracker.rename("Ana", "Carla", mask), first);
+  assert.equal(tracker.resolve("Carla", mask), first);
+  assert.equal(tracker.resolve("Ana", mask) === first, false);
 });

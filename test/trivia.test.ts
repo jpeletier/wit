@@ -7,6 +7,7 @@ import {
   TriviaGame,
   numericHint,
   triviaPoints,
+  type TriviaEvent,
 } from "../src/games/trivia.js";
 
 test("text matching is unordered, case-insensitive, accent-sensitive and ignores empty tokens", () => {
@@ -23,9 +24,28 @@ test("text matching is unordered, case-insensitive, accent-sensitive and ignores
 });
 
 test("numeric matching uses exact safe expression equality", () => {
-  assert.equal(matchesNumericAnswer(42, "6*7"), true);
-  assert.equal(matchesNumericAnswer(0.3, "0.1+0.2"), false);
-  assert.equal(matchesNumericAnswer(6, "1d6"), false);
+  assert.equal(matchesNumericAnswer(42, "6*7", { next: () => 0 }), true);
+  assert.equal(matchesNumericAnswer(0.3, "0.1+0.2", { next: () => 0 }), false);
+  assert.equal(matchesNumericAnswer(6, "1d6", { next: () => 0.99 }), true);
+  assert.equal(matchesNumericAnswer(6, "1d6", { next: () => 0 }), false);
+});
+
+test("numeric Trivia uses its injected random source for deterministic dice", () => {
+  const draws = [0, 0, 0.99];
+  const question = {
+    id: 1,
+    text: "Dado",
+    answer: "6",
+    subjectId: 1,
+    subject: "s",
+    author: "x",
+  };
+  const game = new TriviaGame(1, 1, () => question, {
+    next: () => draws.shift() ?? 0,
+  });
+  for (let tick = 0; tick < 6; tick++) game.tick();
+  assert.equal(game.submit("Ana", "1d6")?.type, "correct");
+  assert.equal(draws.length, 0);
 });
 
 test("hints mask ASCII, digits and ñ while showing accented characters", () => {
@@ -110,4 +130,26 @@ test("unusable long answers are skipped without consuming another round", () => 
     const event = game.tick()[0];
     if (event?.type === "question") assert.equal(event.question.id, 2);
   }
+});
+
+test("selected answers are trimmed for timeout reveals without changing question text", () => {
+  const question = {
+    id: 1,
+    text: "  pregunta con espacios  ",
+    answer: "  Madrid \t",
+    subjectId: 1,
+    subject: "s",
+    author: "x",
+  };
+  const game = new TriviaGame(1, 1, () => question, { next: () => 0 });
+  let timeout: Extract<TriviaEvent, { type: "timeout" }> | undefined;
+  for (let tick = 0; tick < 56; tick++) {
+    const event = game.tick()[0];
+    if (event?.type === "question") {
+      assert.equal(event.question.text, question.text);
+      assert.equal(event.question.answer, "Madrid");
+    }
+    if (event?.type === "timeout") timeout = event;
+  }
+  assert.equal(timeout?.question.answer, "Madrid");
 });
