@@ -25,21 +25,36 @@ export interface NumberWinner {
   score: number;
 }
 
-const vowels =
-  "AAAAAAAAAAAAAAAEEEEEEEEEEEEEEEEEEEEEEEEEEEEIIIIIIIIIIIIOOOOOOOOOOOOOOOOUUUUU";
-const consonants =
-  "BBBBCCCCCCDDDDDDFFFFFFFFGGGGGHHHHJKKLLLLLMMMMNNNNNNÑÑPPPPQRRRRRRRRSSSSSSSSTTTTTTVVWWXYYZZ";
+const vowels = "AAAAAAAAAAAAEEEEEEEEEEEEIIIIIIOOOOOOOOOUUUUU";
+const mixedVowels = "AAAEEEEIIOOOUU";
+const consonantOrder = "RNCLTSDMPBGHFVZJÑQYXKW";
+const consonantCumulative = [
+  43437, 67852, 91954, 114851, 135974, 153959, 171451, 183862, 194558, 203833,
+  212505, 217725, 222918, 227602, 231801, 235788, 237499, 239195, 240273,
+  241027, 241093, 241110,
+];
+
+export function generateRandomVowel(random: RandomSource): string {
+  return vowels[Math.floor(random.next() * 44)]!;
+}
+
+export function generateRandomConsonant2(random: RandomSource): string {
+  const draw = Math.floor(random.next() * 221110) + 20001;
+  const index = consonantCumulative.findIndex((limit) => draw <= limit);
+  return consonantOrder[index < 0 ? consonantOrder.length - 1 : index]!;
+}
+
+export function generateRandomLetter2(random: RandomSource): string {
+  const position = Math.floor(random.next() * 71) + 1;
+  return position < 15
+    ? mixedVowels[position - 1]!
+    : generateRandomConsonant2(random);
+}
 
 export function generateLetters(random: RandomSource): string[] {
   return [
-    ...Array.from(
-      { length: 3 },
-      () => vowels[randomInt(random, 0, vowels.length - 1)]!,
-    ),
-    ...Array.from(
-      { length: 6 },
-      () => consonants[randomInt(random, 0, consonants.length - 1)]!,
-    ),
+    ...Array.from({ length: 3 }, () => generateRandomVowel(random)),
+    ...Array.from({ length: 6 }, () => generateRandomLetter2(random)),
   ];
 }
 
@@ -85,6 +100,7 @@ export function usesNumberInventory(
 ): boolean {
   const available = [...numbers];
   return usedNumbers(expression).every((number) => {
+    if (number > 20_000) return false;
     const index = available.indexOf(number);
     if (index < 0) return false;
     available.splice(index, 1);
@@ -93,7 +109,7 @@ export function usesNumberInventory(
 }
 
 export function scoreNumber(distance: number): number {
-  if (distance < 0.001) return 200;
+  if (distance === 0) return 200;
   return distance < 100 ? vbRound(101 - distance) : 0;
 }
 

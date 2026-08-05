@@ -1,6 +1,12 @@
 import { Client } from "irc-client-ts";
 import { ircCasefold } from "../core/text.js";
-import type { IrcCaseMapping, IrcEvent, IrcPort, IrcUser } from "./port.js";
+import {
+  IrcMembershipState,
+  type IrcCaseMapping,
+  type IrcEvent,
+  type IrcPort,
+  type IrcUser,
+} from "./port.js";
 
 export interface IrcClientConfig {
   nick: string;
@@ -15,6 +21,7 @@ export class IrcClientAdapter implements IrcPort {
   readonly #client: Client;
   readonly #listeners = new Set<(event: IrcEvent) => void>();
   readonly #identities = new Map<string, string>();
+  readonly #membership = new IrcMembershipState();
   #caseMapping: IrcCaseMapping = "rfc1459";
 
   constructor(private readonly config: IrcClientConfig) {
@@ -42,6 +49,9 @@ export class IrcClientAdapter implements IrcPort {
   get caseMapping(): IrcCaseMapping {
     return this.#caseMapping;
   }
+  get joinedChannels(): readonly string[] {
+    return this.#membership.joinedChannels();
+  }
   async connect(): Promise<void> {
     await this.#client.connect(this.config.server, {
       port: this.config.port,
@@ -66,22 +76,10 @@ export class IrcClientAdapter implements IrcPort {
   }
 
   isOperator(channel: string, nick: string): boolean {
-    const list = this.#client.state.nicklists[channel] ?? [];
-    const prefixSpec = this.#client.state.isupport.PREFIX ?? "(qaohv)~&@%+";
-    const match = /^\(([^)]+)\)(.+)$/u.exec(prefixSpec);
-    const modes = match?.[1] ?? "qaohv";
-    const prefixes = match?.[2] ?? "~&@%+";
-    const operatorPrefixes = new Set(
-      [...prefixes].filter((_, index) =>
-        ["q", "a", "o"].includes(modes[index] ?? ""),
-      ),
-    );
-    return list.some(
-      (user) =>
-        ircCasefold(user.nick, this.#caseMapping) ===
-          ircCasefold(nick, this.#caseMapping) &&
-        operatorPrefixes.has(user.prefix),
-    );
+    return this.#membership.isOperator(channel, nick);
+  }
+  isJoined(channel: string): boolean {
+    return this.#membership.isJoined(channel);
   }
 
   #wireEvents(): void {
@@ -92,9 +90,10 @@ export class IrcClientAdapter implements IrcPort {
       for (const channel of this.config.channels) this.#client.join(channel);
       this.#emit({ type: "registered" });
     });
-    this.#client.on("disconnected", () =>
-      this.#emit({ type: "disconnected", reason: "connection lost" }),
-    );
+    this.#client.on("disconnected", () => {
+      this.#membership.clear();
+      this.#emit({ type: "disconnected", reason: "connection lost" });
+    });
     this.#client.on("privmsg:channel", (message) =>
       this.#emit({
         type: "message",
@@ -118,6 +117,8 @@ export class IrcClientAdapter implements IrcPort {
         user,
         self: this.#sameNick(user.nick, this.nick),
       });
+      if (this.#sameNick(user.nick, this.nick))
+        this.#membership.join(message.params.channel);
     });
     this.#client.on("part", (message) => {
       const user = this.#user(message.source);
@@ -126,6 +127,20 @@ export class IrcClientAdapter implements IrcPort {
         channel: message.params.channel,
         user,
         self: this.#sameNick(user.nick, this.nick),
+      });
+      if (this.#sameNick(user.nick, this.nick))
+        this.#membership.part(message.params.channel);
+    });
+    this.#client.on("kick", (message) => {
+      const user = this.#user(message.source);
+      const self = this.#sameNick(message.params.nick, this.nick);
+      if (self) this.#membership.part(message.params.channel);
+      this.#emit({
+        type: "kick",
+        channel: message.params.channel,
+        user,
+        kickedNick: message.params.nick,
+        self,
       });
     });
     this.#client.on("nick", (message) => {
@@ -136,15 +151,20 @@ export class IrcClientAdapter implements IrcPort {
         ircCasefold(message.params.nick, this.#caseMapping),
         identity,
       );
+      this.#membership.rename(previousNick, message.params.nick);
       this.#emit({
         type: "nick",
         previousNick,
         user: { identity, nick: message.params.nick },
       });
     });
-    this.#client.on("nicklist", (message) =>
-      this.#emit({ type: "membership", channel: message.params.channel }),
-    );
+    this.#client.on("nicklist", (message) => {
+      this.#membership.setMembers(
+        message.params.channel,
+        message.params.nicklist,
+      );
+      this.#emit({ type: "membership", channel: message.params.channel });
+    });
     this.#client.on("raw", (message) => {
       if (message.command !== "rpl_isupport") return;
       for (const parameter of message.params) {
@@ -153,6 +173,9 @@ export class IrcClientAdapter implements IrcPort {
         );
         if (match !== null)
           this.#caseMapping = match[1]!.toLowerCase() as IrcCaseMapping;
+        this.#membership.caseMapping = this.#caseMapping;
+        this.#membership.prefix =
+          this.#client.state.isupport.PREFIX ?? "(qaohv)~&@%+";
       }
     });
   }

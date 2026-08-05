@@ -2,6 +2,8 @@ export interface ExpressionOptions {
   dice?: boolean;
   maxLength?: number;
   random?: () => number;
+  maxTerms?: number;
+  maxDepth?: number;
 }
 
 type Token =
@@ -19,8 +21,10 @@ export function calculate(
     expression,
     options.dice ?? true,
     options.random ?? Math.random,
+    options.maxTerms ?? 20,
   );
   let position = 0;
+  let depth = 0;
   const current = (): Token => tokens[position] ?? { type: "eof" };
   const consume = (): Token => tokens[position++] ?? { type: "eof" };
 
@@ -28,10 +32,14 @@ export function calculate(
     const token = consume();
     if (token.type === "number") return token.value;
     if (token.type === "operator" && token.value === "(") {
+      depth++;
+      if (depth > (options.maxDepth ?? 10))
+        throw new Error("Expression is too deeply nested");
       const value = addSubtract();
       const close = consume();
       if (close.type !== "operator" || close.value !== ")")
         throw new Error("Missing closing parenthesis");
+      depth--;
       return value;
     }
     if (token.type === "operator" && ["+", "-"].includes(token.value))
@@ -39,13 +47,15 @@ export function calculate(
     throw new Error("Expected a number");
   };
   const power = (): number => {
-    const left = primary();
-    const token = current();
-    if (token.type === "operator" && token.value === "^") {
+    let value = primary();
+    while (
+      current().type === "operator" &&
+      (current() as { value: string }).value === "^"
+    ) {
       consume();
-      return left ** power();
+      value **= primary();
     }
-    return left;
+    return value;
   };
   const multiplyDivide = (): number => {
     let value = power();
@@ -78,7 +88,12 @@ export function calculate(
   return result;
 }
 
-function tokenize(input: string, dice: boolean, random: () => number): Token[] {
+function tokenize(
+  input: string,
+  dice: boolean,
+  random: () => number,
+  maxTerms: number,
+): Token[] {
   const tokens: Token[] = [];
   let index = 0;
   while (index < input.length) {
@@ -107,6 +122,8 @@ function tokenize(input: string, dice: boolean, random: () => number): Token[] {
         index += diceMatch[0].length;
       }
       tokens.push({ type: "number", value });
+      if (tokens.filter((token) => token.type === "number").length > maxTerms)
+        throw new Error("Expression has too many terms");
       continue;
     }
     if ("+-*/^()".includes(character)) {

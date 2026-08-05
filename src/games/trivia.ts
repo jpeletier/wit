@@ -1,6 +1,6 @@
 import { calculate } from "../core/expression.js";
-import { vbRound } from "../core/format.js";
-import type { Clock } from "../core/ports.js";
+import { mirc, vbRound } from "../core/format.js";
+import type { RandomSource } from "../core/ports.js";
 
 export interface TriviaQuestion {
   id: number;
@@ -24,12 +24,13 @@ export type TriviaEvent =
   | {
       type: "correct";
       nick: string;
+      submitted: string;
       answer: string;
-      subjectId: number;
+      question: TriviaQuestion;
       seconds: number;
       points: number;
     }
-  | { type: "timeout"; answer: string }
+  | { type: "timeout"; question: TriviaQuestion }
   | { type: "complete" };
 
 export function answerWords(answer: string): string[] {
@@ -80,54 +81,70 @@ export function hintWord(word: string, level: 0 | 1 | 2): string {
 }
 
 export function triviaPoints(stage: number, multiplier: number): number {
-  const base = stage < 35 ? 100 : stage < 45 ? 75 : 50;
-  return vbRound(base * multiplier);
+  return vbRound((stage < 35 ? 100 : stage < 45 ? 75 : 50) * multiplier);
+}
+
+export function numericHint(
+  answer: number,
+  level: 0 | 1 | 2,
+  random: RandomSource,
+): string {
+  const spread = level === 0 ? 30 : level === 1 ? 20 : 10;
+  let left = answer - random.next() * spread;
+  let right = answer + random.next() * spread;
+  if (Number.isInteger(answer)) {
+    left = Math.floor(left);
+    right = Math.floor(right);
+  }
+  const format = (value: number): string =>
+    Number.isInteger(answer)
+      ? String(value)
+      : value.toFixed(2).replace(/0+$/u, "").replace(/\.$/u, "");
+  return `El número está entre${mirc.color(` ${format(left)}`, 6)} y${mirc.color(` ${format(right)}`, 6)}`;
 }
 
 export class TriviaGame {
   #stage = 0;
-  #index = -1;
+  #questionCount = 0;
   #question: TriviaQuestion | undefined;
   #numeric: number | undefined;
   #ended = false;
-  #completePending = false;
 
   constructor(
-    private readonly questions: readonly TriviaQuestion[],
+    private readonly total: number,
     private readonly multiplier: number,
-    private readonly clock: Clock,
+    private readonly nextQuestion: () => TriviaQuestion,
+    private readonly random: RandomSource,
   ) {
-    if (questions.length < 1)
-      throw new Error("Trivia requires at least one question");
+    if (total < 1) throw new Error("Trivia requires at least one question");
   }
 
+  get stage(): number {
+    return this.#stage;
+  }
   get currentQuestion(): TriviaQuestion | undefined {
     return this.#question;
   }
 
   tick(): TriviaEvent[] {
     if (this.#ended) return [];
-    if (this.#completePending) {
+    const events: TriviaEvent[] = [];
+    if (this.#stage === 1 && this.#questionCount >= this.total) {
       this.#ended = true;
       return [{ type: "complete" }];
     }
-    this.#stage++;
-    if (this.#stage === 5) return [this.#startQuestion()];
-    if (this.#stage === 35 || this.#stage === 45) {
+    if (this.#stage === 5) events.push(this.#startQuestion());
+    else if (this.#stage === 35 || this.#stage === 45) {
       const level = this.#stage === 35 ? 1 : 2;
-      return [{ type: "hint", level, text: this.#hint(level) }];
-    }
-    if (this.#stage === 55 && this.#question !== undefined) {
-      const event: TriviaEvent = {
-        type: "timeout",
-        answer: this.#question.answer.trim(),
-      };
+      events.push({ type: "hint", level, text: this.#hint(level) });
+    } else if (this.#stage === 55 && this.#question !== undefined) {
+      events.push({ type: "timeout", question: this.#question });
       this.#question = undefined;
+      this.#numeric = undefined;
       this.#stage = 0;
-      if (this.#index + 1 >= this.questions.length) this.#ended = true;
-      return this.#ended ? [event, { type: "complete" }] : [event];
     }
-    return [];
+    this.#stage++;
+    return events;
   }
 
   submit(nick: string, text: string): TriviaEvent | undefined {
@@ -138,41 +155,45 @@ export class TriviaGame {
         ? matchesTriviaAnswer(question.answer.trim(), text)
         : matchesNumericAnswer(this.#numeric, text);
     if (!correct) return undefined;
-    const points = triviaPoints(this.#stage, this.multiplier);
     const event: TriviaEvent = {
       type: "correct",
       nick,
+      submitted: text,
       answer:
         this.#numeric === undefined
           ? question.answer.trim()
           : String(this.#numeric),
-      subjectId: question.subjectId,
+      question,
       seconds: this.#stage - 5,
-      points,
+      points: triviaPoints(this.#stage, this.multiplier),
     };
     this.#question = undefined;
+    this.#numeric = undefined;
     this.#stage = 0;
-    if (this.#index + 1 >= this.questions.length) this.#completePending = true;
     return event;
   }
 
   #startQuestion(): TriviaEvent {
-    this.#index++;
-    const question = this.questions[this.#index];
-    if (question === undefined) {
-      this.#ended = true;
-      return { type: "complete" };
+    this.#questionCount++;
+    let question: TriviaQuestion | undefined;
+    for (let attempts = 0; attempts < 1_000; attempts++) {
+      const candidate = this.nextQuestion();
+      const words = answerWords(candidate.answer.trim());
+      if (words.length > 0 && words.length <= 10) {
+        question = candidate;
+        break;
+      }
     }
+    if (question === undefined)
+      throw new Error("No hay preguntas utilizables después de 1000 intentos");
     const words = answerWords(question.answer.trim());
-    if (words.length === 0 || words.length > 10)
-      throw new Error(`Invalid answer word count for question ${question.id}`);
     this.#question = question;
     this.#numeric = words.length === 1 ? parseNumeric(words[0]!) : undefined;
     return {
       type: "question",
       question,
-      number: this.#index + 1,
-      total: this.questions.length,
+      number: this.#questionCount,
+      total: this.total,
       hint: this.#hint(0),
       words: words.length,
     };
@@ -181,10 +202,10 @@ export class TriviaGame {
   #hint(level: 0 | 1 | 2): string {
     if (this.#question === undefined) return "";
     if (this.#numeric !== undefined)
-      return numericHint(this.#numeric, level, this.clock.now().getTime());
-    return answerWords(this.#question.answer.trim())
+      return numericHint(this.#numeric, level, this.random);
+    return `${answerWords(this.#question.answer.trim())
       .map((word) => hintWord(word, level))
-      .join(" ");
+      .join(" ")} `;
   }
 }
 
@@ -192,21 +213,9 @@ function parseNumeric(value: string): number | undefined {
   const normalized = value.replaceAll(",", ".").replaceAll("'", ".");
   if (
     normalized.length >= 30 ||
-    !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/u.test(normalized)
+    !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(normalized)
   )
     return undefined;
   const result = Number(normalized);
   return Number.isFinite(result) ? result : undefined;
-}
-
-function numericHint(answer: number, level: 0 | 1 | 2, seed: number): string {
-  const spread = level === 0 ? 30 : level === 1 ? 20 : 10;
-  const fraction = ((seed % 997) + 1) / 998;
-  const left = answer - fraction * spread;
-  const right = answer + (1 - fraction / 2) * spread;
-  const format = (value: number): string =>
-    Number.isInteger(answer)
-      ? String(Math.floor(value))
-      : value.toFixed(2).replace(/0+$/u, "").replace(/\.$/u, "");
-  return `El número está entre ${format(left)} y ${format(right)}`;
 }

@@ -11,6 +11,11 @@ test("safe calculator supports precedence, powers, parentheses, decimals and dic
   assert.equal(calculate("2d6", { random: () => 0 }), 2);
   assert.throws(() => calculate("2d6", { dice: false }));
   assert.throws(() => calculate("globalThis.process.exit()"));
+  assert.equal(calculate("2^3^2"), 64);
+  assert.throws(() =>
+    calculate("1+2+3+4+5+6+7+8+9+10+11+12+13+14+15+16+17+18+19+20+21"),
+  );
+  assert.throws(() => calculate("(((((((((((1)))))))))))"));
 });
 
 test("VB banker rounding and mIRC controls are preserved", () => {
@@ -18,7 +23,7 @@ test("VB banker rounding and mIRC controls are preserved", () => {
   assert.equal(vbRound(3.5), 4);
   assert.equal(vbRound(-1.5), -2);
   assert.equal(mirc.bold("x"), "\u0002x\u0002");
-  assert.equal(mirc.color("x", 5), "\u000305x\u0003");
+  assert.equal(mirc.color("x", 5), "\u00035x\u0003");
 });
 
 test("definition ellipsis uses the original length", () => {

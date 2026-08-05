@@ -14,6 +14,7 @@
     "test": "npm run build && node --test dist/test/*.test.js",
     "start": "node dist/src/main.js",
     "db:create": "npm run build && node dist/scripts/db-create.js",
+    "db:audit": "npm run build && node dist/scripts/db-import.js --audit-only",
     "db:import": "npm run build && node dist/scripts/db-import.js",
     "db:verify": "npm run build && node dist/scripts/db-verify.js",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test"

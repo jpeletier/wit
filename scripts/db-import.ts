@@ -3,21 +3,29 @@ import { DatabaseSync } from "node:sqlite";
 import { lookupKey, repairMojibake } from "../src/core/text.js";
 import { auditReport, sourceDatabase, targetDatabase } from "./paths.js";
 
+const auditOnly = process.argv.includes("--audit-only");
+const sourceAudit = new DatabaseSync(sourceDatabase, { readOnly: true });
+const corrections = collectCorrections(sourceAudit);
+sourceAudit.close();
+const proposed = corrections.length;
+const applied = auditOnly ? 0 : corrections.length;
+if (auditOnly) {
+  writeFileSync(
+    auditReport,
+    `${JSON.stringify({ source: "trivial.sqlite", mode: "audit-only", mojibake: { proposed, applied }, corrections }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  console.log(JSON.stringify({ auditOnly: true, proposed }));
+  process.exit(0);
+}
+
 const database = new DatabaseSync(targetDatabase);
-let proposed = 0;
-let applied = 0;
-database.function("wit_key", { deterministic: true }, (value) =>
-  lookupKey(String(value)),
-);
 database.function("wit_repaired_key", { deterministic: true }, (value) =>
   lookupKey(repairMojibake(String(value)).value),
 );
 database.function("wit_text", { deterministic: true }, (value) => {
   if (value === null) return null;
-  const result = repairMojibake(String(value));
-  if (result.proposed) proposed++;
-  if (result.applied) applied++;
-  return result.value;
+  return repairMojibake(String(value)).value;
 });
 
 const imports = [
@@ -39,7 +47,7 @@ const imports = [
   ],
   [
     "channels",
-    `INSERT INTO channels SELECT IdChannel,IDNetwork,wit_text(Name),wit_repaired_key(Name),LastUsed FROM source.Channels`,
+    `INSERT INTO channels SELECT IdChannel,IDNetwork,wit_text(Name),wit_repaired_key(Name),LastUsed,NULL FROM source.Channels`,
   ],
   [
     "question_subsets",
@@ -51,7 +59,7 @@ const imports = [
   ],
   [
     "questions",
-    `INSERT INTO questions SELECT IDQuestion,wit_text(Question),wit_text(Answer),Source,MAX(COALESCE(Repeats,0),0),IDSubject,IDAuthor,COALESCE(IFS,0),COALESCE(rndnum,0),COALESCE(score,0) FROM source.Questions_Table`,
+    `INSERT INTO questions SELECT IDQuestion,wit_text(Question),wit_text(Answer),Source,Repeats,IDSubject,IDAuthor,IFS,rndnum,score FROM source.Questions_Table`,
   ],
   [
     "dictionary",
@@ -105,6 +113,9 @@ try {
       ).count,
     );
   }
+  database.exec(
+    `UPDATE channels SET default_tournament_id=(SELECT IdDefaultTournament FROM source.Channels WHERE IdChannel=channels.id)`,
+  );
   database
     .prepare(
       "INSERT INTO import_audit(key,value) VALUES('mojibake_proposed',?),('mojibake_applied',?)",
@@ -116,12 +127,26 @@ try {
     target: "wit.sqlite",
     counts,
     mojibake: { proposed, applied },
+    corrections,
     generatedAt: new Date().toISOString(),
   };
   writeFileSync(auditReport, `${JSON.stringify(report, null, 2)}\n`, {
     mode: 0o600,
   });
-  console.log(JSON.stringify(report, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        source: report.source,
+        target: report.target,
+        counts: report.counts,
+        mojibake: report.mojibake,
+        correctionDetails: "written to configured ignored report",
+        generatedAt: report.generatedAt,
+      },
+      null,
+      2,
+    ),
+  );
 } catch (error) {
   try {
     database.exec("ROLLBACK");
@@ -135,4 +160,54 @@ try {
 
 function quote(path: string): string {
   return `'${path.replaceAll("'", "''")}'`;
+}
+
+interface Correction {
+  table: string;
+  id: number | string;
+  column: string;
+  original: string;
+  corrected: string;
+}
+function collectCorrections(source: DatabaseSync): Correction[] {
+  const fields = [
+    ["IRCNetworks", "IDNetwork", ["NetworkName", "Description"]],
+    ["Authors", "IdAuthor", ["Author"]],
+    ["WitGames", "IDWitGame", ["GameName"]],
+    ["Subjects", "IdSubject", ["Subject"]],
+    ["Channels", "IdChannel", ["Name"]],
+    ["QuestionSubsets", "IDQuestionSubset", ["DESC"]],
+    ["Questions_Table", "IDQuestion", ["Question", "Answer"]],
+    ["Dictionary", "IDWord", ["word", "meaning"]],
+    ["Players", "IdPlayer", ["NickName"]],
+    ["Leagues", "IDLeague", ["DESC"]],
+    ["Tournaments", "IdTournament", ["Desc"]],
+    ["Games", "IdGame", ["Desc"]],
+  ] as const;
+  const result: Correction[] = [];
+  for (const [table, id, columns] of fields) {
+    for (const column of columns) {
+      const rows = source
+        .prepare(
+          `SELECT ${id} id,${quoteIdentifier(column)} value FROM ${table} WHERE ${quoteIdentifier(column)} IS NOT NULL`,
+        )
+        .iterate() as Iterable<Record<string, unknown>>;
+      for (const row of rows) {
+        const original = String(row.value);
+        const repaired = repairMojibake(original);
+        if (repaired.applied)
+          result.push({
+            table,
+            id: row.id as number | string,
+            column,
+            original,
+            corrected: repaired.value,
+          });
+      }
+    }
+  }
+  return result;
+}
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
 }

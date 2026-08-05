@@ -4,7 +4,7 @@ export const mirc = {
   bold: (text: string): string => `\u0002${text}\u0002`,
   underline: (text: string): string => `\u001f${text}\u001f`,
   color: (text: string, foreground: number, background?: number): string =>
-    `${CONTROL}${String(foreground).padStart(2, "0")}${background === undefined ? "" : `,${String(background).padStart(2, "0")}`}${text}${CONTROL}`,
+    `${CONTROL}${foreground}${background === undefined ? "" : `,${background}`}${text}${CONTROL}`,
 };
 
 export function vbRound(value: number): number {

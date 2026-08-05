@@ -36,6 +36,7 @@ CREATE TABLE channels (
   name TEXT NOT NULL,
   name_key TEXT NOT NULL,
   last_used TEXT,
+  default_tournament_id INTEGER REFERENCES tournaments(id),
   UNIQUE(network_id,name_key)
 ) STRICT;
 
@@ -59,12 +60,12 @@ CREATE TABLE questions (
   question TEXT NOT NULL CHECK(length(trim(question)) > 0),
   answer TEXT NOT NULL CHECK(length(trim(answer)) > 0),
   source INTEGER,
-  repeats INTEGER NOT NULL DEFAULT 0 CHECK(repeats >= 0),
+  repeats INTEGER CHECK(repeats IS NULL OR repeats >= 0),
   subject_id INTEGER NOT NULL REFERENCES subjects(id),
   author_id INTEGER NOT NULL REFERENCES authors(id),
-  selection_ifs INTEGER NOT NULL DEFAULT 0,
-  random_value INTEGER NOT NULL DEFAULT 0,
-  selection_score REAL NOT NULL DEFAULT 0
+  selection_ifs INTEGER,
+  random_value INTEGER,
+  selection_score REAL
 ) STRICT;
 
 CREATE TABLE dictionary (
@@ -135,7 +136,7 @@ CREATE TABLE import_audit (
   value INTEGER NOT NULL CHECK(value >= 0)
 ) STRICT;
 
-CREATE INDEX idx_questions_selection ON questions(subject_id,repeats,selection_score,random_value);
+CREATE INDEX idx_questions_selection ON questions(subject_id,selection_ifs,repeats,random_value);
 CREATE INDEX idx_subset_members_subset ON question_subset_members(subset_id,subject_id);
 CREATE INDEX idx_players_nick ON players(network_id,nick_key);
 CREATE INDEX idx_tournaments_active ON tournaments(channel_id,game_type_id,date_end);
