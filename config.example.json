@@ -7,7 +7,6 @@
       "server": "irc.example.net",
       "port": 6697,
       "tls": true,
-      "password": "****",
       "networkId": 1,
       "outboundDelayMs": 2000,
       "channels": ["#trivia"]

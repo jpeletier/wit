@@ -115,12 +115,20 @@ test("successful registration resets backoff and rejoins configured channels onc
   await flushAttempt();
   const joins: string[] = [];
   const events: string[] = [];
+  const order: string[] = [];
   const registration = new RegistrationPolicy(
     controller,
+    () => order.push("authenticate"),
     ["#one", "#two"],
-    (channel) => joins.push(channel),
+    (channel) => {
+      joins.push(channel);
+      order.push(`join:${channel}`);
+    },
     () => assert.fail("active registration must not close"),
-    () => events.push("registered"),
+    () => {
+      events.push("registered");
+      order.push("registered");
+    },
   );
   assert.equal(registration.registered(), true);
   assert.equal(registration.registered(), false);
@@ -130,6 +138,12 @@ test("successful registration resets backoff and rejoins configured channels onc
   assert.equal(registration.registered(), true);
   assert.deepEqual(joins, ["#one", "#two", "#one", "#two"]);
   assert.deepEqual(events, ["registered", "registered"]);
+  assert.deepEqual(order.slice(0, 4), [
+    "authenticate",
+    "join:#one",
+    "join:#two",
+    "registered",
+  ]);
 });
 
 test("intentional shutdown cancels retry and ignores later disconnects", async () => {
@@ -175,8 +189,10 @@ test("late registration after stop closes without joins, events, or retries", as
   const joins: string[] = [];
   const events: string[] = [];
   let closes = 0;
+  let authentications = 0;
   const registration = new RegistrationPolicy(
     controller,
+    () => authentications++,
     ["#one", "#two"],
     (channel) => joins.push(channel),
     () => closes++,
@@ -185,6 +201,7 @@ test("late registration after stop closes without joins, events, or retries", as
   assert.equal(registration.registered(), false);
   assert.deepEqual(joins, []);
   assert.deepEqual(events, []);
+  assert.equal(authentications, 0);
   assert.equal(closes, 1);
   assert.equal(scheduler.pending(), 0);
 });

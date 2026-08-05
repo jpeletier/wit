@@ -30,6 +30,12 @@ Environment overrides:
 - `WIT_SOURCE_DATABASE`: staging extraction, default `db/trivial.sqlite`
 - `WIT_IMPORT_REPORT`: ignored audit report, default `db/import-audit.json`
 
+## Authentication
+
+Authentication is optional and explicit in ignored `config.json`; no service or NickServ target is inferred. `serverPassword` is sent only as the IRC server `PASS`. `accountAuth` supports SASL PLAIN with `method: "sasl"`, `username`, and `password`.
+
+Post-registration service authentication is separate under `serviceAuth`. It requires single-token `target` and `password` values, accepts an optional single-token `command` (default `IDENTIFY`) and optional `account`, and supports explicit targets such as `nick@server`. It is paced as the first outbound item after each successful registration, before configured channels are joined.
+
 ## Commands
 
 Private commands are `HELP`, `DATE`, `TRIVIAL #canal [5-30]`, `CYL #canal [1-30]`, and either game command with `STOP`. The bot must already be joined to the requested channel. Stopping affects only the named game type and requires current channel operator status from IRC NAMES/PREFIX state. Unrecognized game counts default to 20; Trivia counts below five clamp to five, while nonpositive CYL counts are rejected. Each bot permits at most two concurrent Trivia games and blocks CYL while both slots are occupied.

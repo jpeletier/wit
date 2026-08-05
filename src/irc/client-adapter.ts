@@ -1,6 +1,12 @@
 import { Client } from "irc-client-ts";
 import { ircCasefold } from "../core/text.js";
 import { sanitizeIrcText } from "../core/format.js";
+import {
+  buildClientOptions,
+  buildServiceAuthCommand,
+  type AccountAuth,
+  type ServiceAuth,
+} from "./auth.js";
 import { OutboundQueue, resolveOutboundDelayMs } from "./outbound-queue.js";
 import {
   RegistrationPolicy,
@@ -20,7 +26,9 @@ export interface IrcClientConfig {
   server: string;
   port: number;
   tls: boolean;
-  password?: string;
+  serverPassword?: string;
+  accountAuth?: AccountAuth;
+  serviceAuth?: ServiceAuth;
   channels: string[];
   outboundDelayMs?: number;
 }
@@ -39,17 +47,7 @@ export class IrcClientAdapter implements IrcPort {
   #connectionEnded = true;
 
   constructor(private readonly config: IrcClientConfig) {
-    this.#client = new Client({
-      nick: config.nick,
-      bot: true,
-      ...(config.password === undefined ||
-      config.password === "" ||
-      config.password === "****"
-        ? {}
-        : { password: config.password }),
-      reconnect: false,
-      ctcpReplies: { version: "Wit TypeScript" },
-    });
+    this.#client = new Client(buildClientOptions(config));
     this.#outbound = new OutboundQueue(
       resolveOutboundDelayMs(config.outboundDelayMs),
       undefined,
@@ -71,8 +69,13 @@ export class IrcClientAdapter implements IrcPort {
           error,
         ),
     );
+    const serviceAuth = buildServiceAuthCommand(config.serviceAuth);
     this.#registration = new RegistrationPolicy(
       this.#reconnect,
+      () => {
+        if (serviceAuth !== undefined)
+          this.say(serviceAuth.target, serviceAuth.text);
+      },
       config.channels,
       (channel) => this.#client.join(channel),
       () => this.#client.disconnect(),
