@@ -2,7 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 
 export function openDatabase(path: string): DatabaseSync {
   const database = new DatabaseSync(path);
-  database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;");
+  database.exec(
+    "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;",
+  );
   return database;
 }
 
