@@ -16,13 +16,6 @@ export function ircCasefold(
   return folded;
 }
 
-export function accentInsensitive(value: string): string {
-  return value
-    .normalize("NFD")
-    .replaceAll(/\p{M}/gu, "")
-    .toLocaleLowerCase("es-ES");
-}
-
 export function repairMojibake(value: string): {
   value: string;
   proposed: boolean;

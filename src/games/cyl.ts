@@ -1,6 +1,6 @@
 import { calculate } from "../core/expression.js";
 import { definitionExcerpt, vbRound } from "../core/format.js";
-import { accentInsensitive, lookupKey } from "../core/text.js";
+import { lookupKey } from "../core/text.js";
 import type { RandomSource } from "../core/ports.js";
 import { randomInt } from "../core/ports.js";
 
@@ -80,13 +80,26 @@ export function usesSuppliedLetters(
   word: string,
   letters: readonly string[],
 ): boolean {
-  const available = letters.map(accentInsensitive);
-  return [...word.trim()].every((character) => {
-    const index = available.indexOf(accentInsensitive(character));
+  const available = letters.map(foldCylTile);
+  return [...word.trim().normalize("NFC")].every((character) => {
+    const index = available.indexOf(foldCylTile(character));
     if (index < 0) return false;
     available.splice(index, 1);
     return true;
   });
+}
+
+function foldCylTile(character: string): string {
+  const normalized = character.normalize("NFC").toUpperCase();
+  const vowelFolds: Record<string, string> = {
+    Á: "A",
+    É: "E",
+    Í: "I",
+    Ó: "O",
+    Ú: "U",
+    Ü: "U",
+  };
+  return vowelFolds[normalized] ?? normalized;
 }
 
 export function usedNumbers(expression: string): number[] {

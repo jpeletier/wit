@@ -15,7 +15,7 @@ import {
   validateNumberEntry,
 } from "../src/games/cyl.js";
 
-test("letter validation trims, matches supplied letters without accents, and dictionary keeps accents", () => {
+test("letter validation folds vowel accents while dictionary lookup keeps accents", () => {
   assert.equal(
     usesSuppliedLetters(" camión ", [
       "C",
@@ -43,9 +43,36 @@ test("letter validation trims, matches supplied letters without accents, and dic
   assert.equal(round.submit("u2", "Bea", "CAMION"), false);
 });
 
+test("CYL inventory preserves Ñ as a distinct premium tile", () => {
+  assert.equal(usesSuppliedLetters("AÑO", ["A", "N", "O"]), false);
+  assert.equal(usesSuppliedLetters("AÑO", ["A", "Ñ", "O"]), true);
+  assert.equal(usesSuppliedLetters("ANO", ["A", "Ñ", "O"]), false);
+  assert.equal(
+    usesSuppliedLetters("ÁÉÍÓÚÜ", ["A", "E", "I", "O", "U", "U"]),
+    true,
+  );
+  assert.equal(usesSuppliedLetters("Ć", ["C"]), false);
+
+  const dictionary = new Map([
+    ["año", { word: "año", meaning: "periodo", status: "OK" as const }],
+  ]);
+  const withoutEnye = new LetterRound(["A", "N", "O"], (key) =>
+    dictionary.get(key),
+  );
+  assert.equal(withoutEnye.submit("u1", "Ana", "AÑO"), false);
+  assert.deepEqual(withoutEnye.winners(), []);
+
+  const withEnye = new LetterRound(["A", "Ñ", "O"], (key) =>
+    dictionary.get(key),
+  );
+  assert.equal(withEnye.submit("u1", "Ana", "AÑO"), true);
+  assert.equal(withEnye.winners()[0]?.score, 100);
+});
+
 test("K has value 8 and word scores preserve legacy values", () => {
   assert.equal(CYL_K, 8);
   assert.equal(scoreWord("K"), 80);
+  assert.equal(scoreWord("Ñ"), 80);
   assert.equal(scoreWord("CASA"), 60);
 });
 
