@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
+    "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check .",
     "test": "npm run build && node --test dist/test/*.test.js",
     "start": "node dist/src/main.js",
@@ -17,7 +18,15 @@
     "db:audit": "npm run build && node dist/scripts/db-import.js --audit-only",
     "db:import": "npm run build && node dist/scripts/db-import.js",
     "db:verify": "npm run build && node dist/scripts/db-verify.js",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm test"
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{js,jsx,mjs,cjs,json,jsonc,yml,yaml,md,html,css,scss}": "prettier --write"
   },
   "dependencies": {
     "irc-client-ts": "0.23.1"
@@ -26,6 +35,9 @@
     "@eslint/js": "^9.32.0",
     "@types/node": "^24.1.0",
     "eslint": "^9.32.0",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.38.0"
