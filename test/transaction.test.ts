@@ -8,7 +8,7 @@ test("transaction returns successful operation result and commits once", () => {
   const result = { committed: true };
   const actual = transaction(
     database((sql) => calls.push(sql)),
-    () => result,
+    () => result
   );
   assert.equal(actual, result);
   assert.deepEqual(calls, ["BEGIN IMMEDIATE", "COMMIT"]);
@@ -23,8 +23,8 @@ test("BEGIN failure propagates directly without rollback", () => {
         calls.push(sql);
         throw failure;
       }),
-      () => assert.fail("operation must not run"),
-    ),
+      () => assert.fail("operation must not run")
+    )
   );
   assert.equal(thrown, failure);
   assert.deepEqual(calls, ["BEGIN IMMEDIATE"]);
@@ -43,8 +43,8 @@ test("operation failure is rethrown by identity after rollback", () => {
       () => {
         // eslint-disable-next-line @typescript-eslint/only-throw-error -- verify hostile database callbacks
         throw failure;
-      },
-    ),
+      }
+    )
   );
   assert.equal(thrown, failure);
   assert.deepEqual(calls, ["BEGIN IMMEDIATE", "ROLLBACK"]);
@@ -57,10 +57,12 @@ test("COMMIT failure is rethrown by identity after rollback", () => {
     transaction(
       database((sql) => {
         calls.push(sql);
-        if (sql === "COMMIT") throw failure;
+        if (sql === "COMMIT") {
+          throw failure;
+        }
       }),
-      () => 42,
-    ),
+      () => 42
+    )
   );
   assert.equal(thrown, failure);
   assert.deepEqual(calls, ["BEGIN IMMEDIATE", "COMMIT", "ROLLBACK"]);
@@ -74,13 +76,15 @@ test("rollback failure aggregates hostile operation failure first", () => {
     transaction(
       database((sql) => {
         calls.push(sql);
-        if (sql === "ROLLBACK") throw rollback;
+        if (sql === "ROLLBACK") {
+          throw rollback;
+        }
       }),
       () => {
         // eslint-disable-next-line @typescript-eslint/only-throw-error -- verify hostile database callbacks
         throw primary;
-      },
-    ),
+      }
+    )
   );
   assert.ok(thrown instanceof AggregateError);
   assert.equal(thrown.message, "Transaction failed and rollback failed");
@@ -97,11 +101,15 @@ test("rollback failure aggregates COMMIT failure first", () => {
     transaction(
       database((sql) => {
         calls.push(sql);
-        if (sql === "COMMIT") throw primary;
-        if (sql === "ROLLBACK") throw rollback;
+        if (sql === "COMMIT") {
+          throw primary;
+        }
+        if (sql === "ROLLBACK") {
+          throw rollback;
+        }
       }),
-      () => "result",
-    ),
+      () => "result"
+    )
   );
   assert.ok(thrown instanceof AggregateError);
   assert.equal(thrown.cause, primary);

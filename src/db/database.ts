@@ -26,8 +26,9 @@ export function openDatabase(path: string): DatabaseSync {
   } catch (cause) {
     throw new Error(`Database file is not accessible: ${path}`, { cause });
   }
-  if (!file.isFile())
+  if (!file.isFile()) {
     throw new Error(`Database path is not a regular file: ${path}`);
+  }
 
   let database: DatabaseSync;
   try {
@@ -38,7 +39,7 @@ export function openDatabase(path: string): DatabaseSync {
   try {
     validateRuntimeSchema(database);
     database.exec(
-      "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;",
+      "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;"
     );
     return database;
   } catch (primaryError) {
@@ -48,7 +49,7 @@ export function openDatabase(path: string): DatabaseSync {
       throw new AggregateError(
         [primaryError, closeError],
         "Database startup failed and close failed",
-        { cause: primaryError },
+        { cause: primaryError }
       );
     }
     throw primaryError;
@@ -65,36 +66,37 @@ export function validateRuntimeSchema(database: DatabaseSync): void {
     throw new Error("Database schema could not be inspected", { cause });
   }
   const names = new Set(tables.map((table) => table.name));
-  if (!names.has("schema_migrations"))
+  if (!names.has("schema_migrations")) {
     throw new Error("Database schema_migrations table is missing");
+  }
 
   let migrations: Array<{ version: unknown; versionType: unknown }>;
   try {
     migrations = database
-      .prepare(
-        "SELECT version,typeof(version) versionType FROM schema_migrations",
-      )
+      .prepare("SELECT version,typeof(version) versionType FROM schema_migrations")
       .all() as unknown as Array<{ version: unknown; versionType: unknown }>;
   } catch (cause) {
     throw new Error("Database migration marker is malformed", { cause });
   }
-  if (migrations.length !== 1)
+  if (migrations.length !== 1) {
     throw new Error("Database must contain exactly one migration marker");
+  }
   const migration = migrations[0]!;
   if (
     migration.versionType !== "integer" ||
     typeof migration.version !== "number" ||
     !Number.isSafeInteger(migration.version)
-  )
+  ) {
     throw new Error("Database migration version must be an integer");
-  if (migration.version !== SUPPORTED_SCHEMA_VERSION)
-    throw new Error(
-      `Database schema version ${String(migration.version)} is unsupported`,
-    );
+  }
+  if (migration.version !== SUPPORTED_SCHEMA_VERSION) {
+    throw new Error(`Database schema version ${String(migration.version)} is unsupported`);
+  }
 
   const missing = REQUIRED_RUNTIME_TABLES.find((table) => !names.has(table));
-  if (missing !== undefined)
+  if (missing !== undefined) {
     throw new Error(`Database runtime table is missing: ${missing}`);
+  }
 }
 
 export function transaction<T>(database: DatabaseSync, operation: () => T): T {
@@ -110,7 +112,7 @@ export function transaction<T>(database: DatabaseSync, operation: () => T): T {
       throw new AggregateError(
         [primaryError, rollbackError],
         "Transaction failed and rollback failed",
-        { cause: primaryError },
+        { cause: primaryError }
       );
     }
     throw primaryError;

@@ -3,17 +3,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import {
-  GameRepository,
-  QuestionRepository,
-  legacyLeagueId,
-} from "../src/db/repositories.js";
+import { GameRepository, QuestionRepository, legacyLeagueId } from "../src/db/repositories.js";
 
 function database(): DatabaseSync {
   const db = new DatabaseSync(":memory:");
   db.exec(readFileSync(resolve("migrations/001_initial.sql"), "utf8"));
   db.exec(
-    "INSERT INTO networks VALUES(1,'red','','1','1'); INSERT INTO game_types VALUES(1,'Trivial'); INSERT INTO authors VALUES(1,'a'); INSERT INTO subjects VALUES(1,'s',1,1); INSERT INTO channels VALUES(1,1,'#c','#c',NULL,NULL); INSERT INTO question_subsets VALUES(1,'q',1,1); INSERT INTO leagues VALUES(1,'l',NULL,NULL); INSERT INTO tournaments VALUES(1,'t',NULL,NULL,1,1,1,1)",
+    "INSERT INTO networks VALUES(1,'red','','1','1'); INSERT INTO game_types VALUES(1,'Trivial'); INSERT INTO authors VALUES(1,'a'); INSERT INTO subjects VALUES(1,'s',1,1); INSERT INTO channels VALUES(1,1,'#c','#c',NULL,NULL); INSERT INTO question_subsets VALUES(1,'q',1,1); INSERT INTO leagues VALUES(1,'l',NULL,NULL); INSERT INTO tournaments VALUES(1,'t',NULL,NULL,1,1,1,1)"
   );
   return db;
 }
@@ -31,19 +27,18 @@ test("player and score upserts are transactional and IDs remain unique", () => {
         last_used: string;
       }
     ).last_used,
-    "2026-08-05T02:00:00.000",
+    "2026-08-05T02:00:00.000"
   );
   repository.addScore(player, 1, 1, 100);
   repository.addScore(player, 1, 1, 75);
   assert.deepEqual(
     { ...db.prepare("SELECT questions_answered,score FROM scores").get() },
-    { questions_answered: 2, score: 175 },
+    { questions_answered: 2, score: 175 }
   );
   assert.throws(() => repository.addScore(999, 1, 1, 1));
   assert.equal(
-    (db.prepare("SELECT count(*) count FROM scores").get() as { count: number })
-      .count,
-    1,
+    (db.prepare("SELECT count(*) count FROM scores").get() as { count: number }).count,
+    1
   );
   db.close();
 });
@@ -58,12 +53,11 @@ test("batch score persistence rolls back every winner on one invalid row", () =>
     repository.addScores(1, [
       { playerId: player, subjectId: 1, points: 20 },
       { playerId: 999, subjectId: 1, points: 10 },
-    ]),
+    ])
   );
   assert.equal(
-    (db.prepare("SELECT count(*) count FROM scores").get() as { count: number })
-      .count,
-    0,
+    (db.prepare("SELECT count(*) count FROM scores").get() as { count: number }).count,
+    0
   );
   db.close();
 });
@@ -88,21 +82,19 @@ test("runtime persistence uses offset-less Madrid wall timestamps", () => {
   const expected = "2026-08-05T02:00:00.123";
   assert.equal(
     (
-      db
-        .prepare("SELECT last_used value FROM players WHERE id=?")
-        .get(playerId) as {
+      db.prepare("SELECT last_used value FROM players WHERE id=?").get(playerId) as {
         value: string;
       }
     ).value,
-    expected,
+    expected
   );
   assert.equal(
     (
-      db
-        .prepare("SELECT last_used value FROM channels WHERE id=?")
-        .get(context.channelId) as { value: string }
+      db.prepare("SELECT last_used value FROM channels WHERE id=?").get(context.channelId) as {
+        value: string;
+      }
     ).value,
-    expected,
+    expected
   );
   assert.equal(
     (
@@ -110,15 +102,13 @@ test("runtime persistence uses offset-less Madrid wall timestamps", () => {
         .prepare("SELECT date_init value FROM tournaments WHERE id=?")
         .get(context.tournamentId) as { value: string }
     ).value,
-    expected,
+    expected
   );
   assert.deepEqual(
     {
-      ...db
-        .prepare("SELECT date_init,date_end FROM games WHERE id=?")
-        .get(gameId),
+      ...db.prepare("SELECT date_init,date_end FROM games WHERE id=?").get(gameId),
     },
-    { date_init: expected, date_end: expected },
+    { date_init: expected, date_end: expected }
   );
   db.close();
 });
@@ -138,18 +128,18 @@ test("tournaments reuse current custom subsets and inherit stale defaults", () =
   assert.equal(reused.subsetId, 5);
   assert.equal(reused.multiplier, 2);
   db.exec(
-    "UPDATE channels SET default_tournament_id=50 WHERE id=1; DELETE FROM tournaments WHERE id=51; DELETE FROM leagues WHERE id=305",
+    "UPDATE channels SET default_tournament_id=50 WHERE id=1; DELETE FROM tournaments WHERE id=51; DELETE FROM leagues WHERE id=305"
   );
   const inherited = repository.prepareTournament(1, "#c", 1);
   assert.equal(inherited.leagueId, 305);
   assert.equal(inherited.subsetId, 5);
   assert.equal(
     (
-      db
-        .prepare("SELECT default_tournament_id value FROM channels WHERE id=1")
-        .get() as { value: number }
+      db.prepare("SELECT default_tournament_id value FROM channels WHERE id=1").get() as {
+        value: number;
+      }
     ).value,
-    inherited.tournamentId,
+    inherited.tournamentId
   );
   db.close();
 });
@@ -168,7 +158,7 @@ test("game creation and finalization fail visibly on invalid state", () => {
 test("question selection increments repeat weighting transactionally", () => {
   const db = database();
   db.exec(
-    "INSERT INTO question_subset_members VALUES(1,1,1,1); INSERT INTO questions VALUES(1,'q','a',NULL,0,1,1,1,0,NULL)",
+    "INSERT INTO question_subset_members VALUES(1,1,1,1); INSERT INTO questions VALUES(1,'q','a',NULL,0,1,1,1,0,NULL)"
   );
   const repository = new QuestionRepository(db, { next: () => 0 });
   assert.equal(repository.next(1).id, 1);
@@ -178,7 +168,7 @@ test("question selection increments repeat weighting transactionally", () => {
         repeats: number;
       }
     ).repeats,
-    1,
+    1
   );
   db.close();
 });
@@ -189,7 +179,7 @@ test("question buffer does not retain rows after an update rollback", () => {
     `INSERT INTO question_subset_members VALUES(1,1,1,1);
      INSERT INTO questions VALUES(1,'stale','old',NULL,0,1,1,1,0,NULL);
      CREATE TRIGGER fail_question_update BEFORE UPDATE OF repeats ON questions
-     BEGIN SELECT RAISE(ABORT,'injected update failure'); END;`,
+     BEGIN SELECT RAISE(ABORT,'injected update failure'); END;`
   );
   const repository = new QuestionRepository(db, { next: () => 0 });
   assert.throws(() => repository.next(1), /injected update failure/u);
@@ -199,7 +189,7 @@ test("question buffer does not retain rows after an update rollback", () => {
         repeats: number;
       }
     ).repeats,
-    0,
+    0
   );
   db.exec(`DROP TRIGGER fail_question_update;
     UPDATE questions SET question='fresh',answer='current' WHERE id=1`);
@@ -212,7 +202,7 @@ test("question buffer does not retain rows after an update rollback", () => {
         repeats: number;
       }
     ).repeats,
-    1,
+    1
   );
   db.close();
 });
@@ -220,12 +210,12 @@ test("question buffer does not retain rows after an update rollback", () => {
 test("question buffer does not retain rows when COMMIT fails", () => {
   const db = database();
   db.exec(
-    "INSERT INTO question_subset_members VALUES(1,1,1,1); INSERT INTO questions VALUES(1,'stale','old',NULL,0,1,1,1,0,NULL)",
+    "INSERT INTO question_subset_members VALUES(1,1,1,1); INSERT INTO questions VALUES(1,'stale','old',NULL,0,1,1,1,0,NULL)"
   );
   let failCommit = true;
   const wrapped = new Proxy(db, {
     get(target, property) {
-      if (property === "exec")
+      if (property === "exec") {
         return (sql: string): void => {
           if (sql === "COMMIT" && failCommit) {
             failCommit = false;
@@ -233,8 +223,11 @@ test("question buffer does not retain rows when COMMIT fails", () => {
           }
           target.exec(sql);
         };
+      }
       const value = Reflect.get(target, property) as unknown;
-      if (typeof value !== "function") return value;
+      if (typeof value !== "function") {
+        return value;
+      }
       return (...args: unknown[]): unknown => {
         const result: unknown = Reflect.apply(value, target, args);
         return result;
@@ -249,11 +242,9 @@ test("question buffer does not retain rows when COMMIT fails", () => {
         repeats: number;
       }
     ).repeats,
-    0,
+    0
   );
-  db.exec(
-    "UPDATE questions SET question='after commit',answer='current' WHERE id=1",
-  );
+  db.exec("UPDATE questions SET question='after commit',answer='current' WHERE id=1");
   const selected = repository.next(1);
   assert.equal(selected.text, "after commit");
   assert.equal(selected.answer, "current");
@@ -263,7 +254,7 @@ test("question buffer does not retain rows when COMMIT fails", () => {
         repeats: number;
       }
     ).repeats,
-    1,
+    1
   );
   db.close();
 });
@@ -284,17 +275,13 @@ test("selector uses weighted subjects, IFS positions, FIFO and refresh mutations
   const weighted = repository.next(1);
   assert.equal(weighted.subjectId, 2);
   const rows = db
-    .prepare(
-      "SELECT repeats,random_value FROM questions WHERE id IN (1,2,4) ORDER BY id",
-    )
+    .prepare("SELECT repeats,random_value FROM questions WHERE id IN (1,2,4) ORDER BY id")
     .all() as Array<{ repeats: number; random_value: number }>;
   assert.deepEqual(
     rows.map((row) => row.repeats),
-    [2, 2, 1],
+    [2, 2, 1]
   );
-  assert.ok(
-    rows.every((row) => row.random_value >= 1 && row.random_value <= 10_000),
-  );
+  assert.ok(rows.every((row) => row.random_value >= 1 && row.random_value <= 10_000));
   db.close();
 });
 
@@ -324,12 +311,12 @@ test(
           count: number;
         }
       ).count,
-      1,
+      1
     );
     const row = db
       .prepare(
         `SELECT c.id,c.default_tournament_id,t.question_subset_id,t.league_id FROM channels c
-    JOIN tournaments t ON t.id=c.default_tournament_id WHERE t.game_type_id=1 AND t.question_subset_id<>1 LIMIT 1`,
+    JOIN tournaments t ON t.id=c.default_tournament_id WHERE t.game_type_id=1 AND t.question_subset_id<>1 LIMIT 1`
       )
       .get() as
       | {
@@ -347,16 +334,13 @@ test(
     };
     const date = new Date(2001, 2 + typed.league_id, 1);
     const repository = new GameRepository(db, { now: () => date });
-    const channel = db
-      .prepare("SELECT network_id,name FROM channels WHERE id=?")
-      .get(typed.id) as { network_id: number; name: string };
-    const context = repository.prepareTournament(
-      channel.network_id,
-      channel.name,
-      1,
-    );
+    const channel = db.prepare("SELECT network_id,name FROM channels WHERE id=?").get(typed.id) as {
+      network_id: number;
+      name: string;
+    };
+    const context = repository.prepareTournament(channel.network_id, channel.name, 1);
     assert.equal(context.tournamentId, typed.default_tournament_id);
     assert.equal(context.subsetId, typed.question_subset_id);
     db.close();
-  },
+  }
 );

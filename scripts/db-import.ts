@@ -14,7 +14,7 @@ if (auditOnly) {
   writeFileSync(
     auditReport,
     `${JSON.stringify({ source: basename(sourceDatabase), mode: "audit-only", mojibake: { proposed, applied }, corrections }, null, 2)}\n`,
-    { mode: 0o600 },
+    { mode: 0o600 }
   );
   console.log(JSON.stringify({ auditOnly: true, proposed }));
   process.exit(0);
@@ -22,10 +22,12 @@ if (auditOnly) {
 
 const database = new DatabaseSync(targetDatabase);
 database.function("wit_repaired_key", { deterministic: true }, (value) =>
-  lookupKey(repairMojibake(String(value)).value),
+  lookupKey(repairMojibake(String(value)).value)
 );
 database.function("wit_text", { deterministic: true }, (value) => {
-  if (value === null) return null;
+  if (value === null) {
+    return null;
+  }
   return repairMojibake(String(value)).value;
 });
 
@@ -96,13 +98,14 @@ try {
   database.exec(
     "PRAGMA foreign_keys=ON; PRAGMA busy_timeout=10000; ATTACH DATABASE " +
       quote(sourceDatabase) +
-      " AS source; BEGIN IMMEDIATE",
+      " AS source; BEGIN IMMEDIATE"
   );
-  const existing = database
-    .prepare("SELECT count(*) count FROM authors")
-    .get() as { count: number };
-  if (existing.count !== 0)
+  const existing = database.prepare("SELECT count(*) count FROM authors").get() as {
+    count: number;
+  };
+  if (existing.count !== 0) {
     throw new Error("Target database has already been imported");
+  }
   const counts: Record<string, number> = {};
   for (const [table, sql] of imports) {
     database.exec(sql);
@@ -111,15 +114,15 @@ try {
         database.prepare(`SELECT count(*) count FROM ${table}`).get() as {
           count: number;
         }
-      ).count,
+      ).count
     );
   }
   database.exec(
-    `UPDATE channels SET default_tournament_id=(SELECT IdDefaultTournament FROM source.Channels WHERE IdChannel=channels.id)`,
+    `UPDATE channels SET default_tournament_id=(SELECT IdDefaultTournament FROM source.Channels WHERE IdChannel=channels.id)`
   );
   database
     .prepare(
-      "INSERT INTO import_audit(key,value) VALUES('mojibake_proposed',?),('mojibake_applied',?)",
+      "INSERT INTO import_audit(key,value) VALUES('mojibake_proposed',?),('mojibake_applied',?)"
     )
     .run(proposed, applied);
   database.exec("COMMIT; PRAGMA optimize");
@@ -145,8 +148,8 @@ try {
         generatedAt: report.generatedAt,
       },
       null,
-      2,
-    ),
+      2
+    )
   );
 } catch (error) {
   try {
@@ -190,13 +193,13 @@ function collectCorrections(source: DatabaseSync): Correction[] {
     for (const column of columns) {
       const rows = source
         .prepare(
-          `SELECT ${id} id,${quoteIdentifier(column)} value FROM ${table} WHERE ${quoteIdentifier(column)} IS NOT NULL`,
+          `SELECT ${id} id,${quoteIdentifier(column)} value FROM ${table} WHERE ${quoteIdentifier(column)} IS NOT NULL`
         )
         .iterate() as Iterable<Record<string, unknown>>;
       for (const row of rows) {
         const original = String(row.value);
         const repaired = repairMojibake(original);
-        if (repaired.applied)
+        if (repaired.applied) {
           result.push({
             table,
             id: row.id as number | string,
@@ -204,6 +207,7 @@ function collectCorrections(source: DatabaseSync): Correction[] {
             original,
             corrected: repaired.value,
           });
+        }
       }
     }
   }

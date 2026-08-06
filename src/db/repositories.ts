@@ -39,7 +39,7 @@ export function legacyLeagueId(date: Date): number {
 export class GameRepository {
   constructor(
     private readonly database: DatabaseSync,
-    private readonly clock: Clock,
+    private readonly clock: Clock
   ) {}
 
   player(networkId: number, nick: string): number {
@@ -51,38 +51,24 @@ export class GameRepository {
       if (existing !== undefined) {
         this.database
           .prepare("UPDATE players SET nick=?,last_used=? WHERE id=?")
-          .run(
-            nick.normalize("NFC"),
-            formatMadridSqlDateTime(this.clock.now()),
-            existing.id,
-          );
+          .run(nick.normalize("NFC"), formatMadridSqlDateTime(this.clock.now()), existing.id);
         return existing.id;
       }
       return Number(
         this.database
-          .prepare(
-            "INSERT INTO players(network_id,nick,nick_key,last_used) VALUES(?,?,?,?)",
-          )
-          .run(
-            networkId,
-            nick.normalize("NFC"),
-            key,
-            formatMadridSqlDateTime(this.clock.now()),
-          ).lastInsertRowid,
+          .prepare("INSERT INTO players(network_id,nick,nick_key,last_used) VALUES(?,?,?,?)")
+          .run(networkId, nick.normalize("NFC"), key, formatMadridSqlDateTime(this.clock.now()))
+          .lastInsertRowid
       );
     });
   }
 
-  prepareTournament(
-    networkId: number,
-    channelName: string,
-    gameTypeId: 1 | 2,
-  ): TournamentContext {
+  prepareTournament(networkId: number, channelName: string, gameTypeId: 1 | 2): TournamentContext {
     return transaction(this.database, () => {
       const channelKey = lookupKey(channelName);
       let channel = this.database
         .prepare(
-          "SELECT id,default_tournament_id defaultTournamentId FROM channels WHERE network_id=? AND name_key=?",
+          "SELECT id,default_tournament_id defaultTournamentId FROM channels WHERE network_id=? AND name_key=?"
         )
         .get(networkId, channelKey) as
         { id: number; defaultTournamentId: number | null } | undefined;
@@ -92,14 +78,14 @@ export class GameRepository {
           id: Number(
             this.database
               .prepare(
-                "INSERT INTO channels(network_id,name,name_key,last_used,default_tournament_id) VALUES(?,?,?,?,NULL)",
+                "INSERT INTO channels(network_id,name,name_key,last_used,default_tournament_id) VALUES(?,?,?,?,NULL)"
               )
               .run(
                 networkId,
                 channelName.normalize("NFC"),
                 channelKey,
-                formatMadridSqlDateTime(this.clock.now()),
-              ).lastInsertRowid,
+                formatMadridSqlDateTime(this.clock.now())
+              ).lastInsertRowid
           ),
           defaultTournamentId: null,
         };
@@ -108,29 +94,28 @@ export class GameRepository {
       const leagueExists = this.database
         .prepare("SELECT 1 present FROM leagues WHERE id=?")
         .get(leagueId);
-      if (leagueExists === undefined)
+      if (leagueExists === undefined) {
         this.database
           .prepare("INSERT INTO leagues(id,description) VALUES(?,?)")
           .run(leagueId, `${leagueId}ª Liga de trivial`);
+      }
 
       let tournament = this.database
         .prepare(
           `SELECT t.id,t.question_subset_id subsetId,t.description tournamentDescription,
         qs.description subsetDescription,qs.multiplier FROM tournaments t JOIN question_subsets qs ON qs.id=t.question_subset_id
-        WHERE t.channel_id=? AND t.league_id=? AND t.game_type_id=? ORDER BY t.id LIMIT 1`,
+        WHERE t.channel_id=? AND t.league_id=? AND t.game_type_id=? ORDER BY t.id LIMIT 1`
         )
         .get(channel.id, leagueId, gameTypeId) as TournamentRow | undefined;
       let newTournament = false;
       if (tournament === undefined) {
         const subsetId =
-          gameTypeId === 2
-            ? 34
-            : this.#inheritedTriviaSubset(channel.defaultTournamentId);
+          gameTypeId === 2 ? 34 : this.#inheritedTriviaSubset(channel.defaultTournamentId);
         const description = `Torneo oficial de ${channelName} en la ${leagueId}ª liga de ${gameTypeId === 1 ? "trivial" : "CYL"}.`;
         const id = Number(
           this.database
             .prepare(
-              "INSERT INTO tournaments(description,date_init,date_end,channel_id,league_id,question_subset_id,game_type_id) VALUES(?,?,NULL,?,?,?,?)",
+              "INSERT INTO tournaments(description,date_init,date_end,channel_id,league_id,question_subset_id,game_type_id) VALUES(?,?,NULL,?,?,?,?)"
             )
             .run(
               description,
@@ -138,24 +123,22 @@ export class GameRepository {
               channel.id,
               leagueId,
               subsetId,
-              gameTypeId,
-            ).lastInsertRowid,
+              gameTypeId
+            ).lastInsertRowid
         );
-        if (gameTypeId === 1)
+        if (gameTypeId === 1) {
           this.database
             .prepare("UPDATE channels SET default_tournament_id=? WHERE id=?")
             .run(id, channel.id);
+        }
         tournament = this.database
           .prepare(
             `SELECT t.id,t.question_subset_id subsetId,t.description tournamentDescription,
-          qs.description subsetDescription,qs.multiplier FROM tournaments t JOIN question_subsets qs ON qs.id=t.question_subset_id WHERE t.id=?`,
+          qs.description subsetDescription,qs.multiplier FROM tournaments t JOIN question_subsets qs ON qs.id=t.question_subset_id WHERE t.id=?`
           )
           .get(id) as unknown as TournamentRow;
         newTournament = true;
-      } else if (
-        gameTypeId === 1 &&
-        channel.defaultTournamentId !== tournament.id
-      ) {
+      } else if (gameTypeId === 1 && channel.defaultTournamentId !== tournament.id) {
         this.database
           .prepare("UPDATE channels SET default_tournament_id=? WHERE id=?")
           .run(tournament.id, channel.id);
@@ -175,33 +158,25 @@ export class GameRepository {
   }
 
   #inheritedTriviaSubset(defaultTournamentId: number | null): number {
-    if (defaultTournamentId === null) return 1;
+    if (defaultTournamentId === null) {
+      return 1;
+    }
     const row = this.database
-      .prepare(
-        "SELECT question_subset_id subsetId FROM tournaments WHERE id=? AND game_type_id=1",
-      )
+      .prepare("SELECT question_subset_id subsetId FROM tournaments WHERE id=? AND game_type_id=1")
       .get(defaultTournamentId) as { subsetId: number } | undefined;
     return row?.subsetId ?? 1;
   }
 
-  createGame(
-    tournamentId: number,
-    challenges: number,
-    description = "",
-  ): number {
+  createGame(tournamentId: number, challenges: number, description = ""): number {
     return transaction(this.database, () =>
       Number(
         this.database
           .prepare(
-            "INSERT INTO games(tournament_id,num_questions,date_init,description) VALUES(?,?,?,?)",
+            "INSERT INTO games(tournament_id,num_questions,date_init,description) VALUES(?,?,?,?)"
           )
-          .run(
-            tournamentId,
-            challenges,
-            formatMadridSqlDateTime(this.clock.now()),
-            description,
-          ).lastInsertRowid,
-      ),
+          .run(tournamentId, challenges, formatMadridSqlDateTime(this.clock.now()), description)
+          .lastInsertRowid
+      )
     );
   }
 
@@ -210,8 +185,9 @@ export class GameRepository {
       const result = this.database
         .prepare("UPDATE games SET date_end=? WHERE id=? AND date_end IS NULL")
         .run(formatMadridSqlDateTime(this.clock.now()), gameId);
-      if (result.changes !== 1)
+      if (result.changes !== 1) {
         throw new Error(`Game ${gameId} was not active`);
+      }
     });
   }
 
@@ -221,14 +197,15 @@ export class GameRepository {
         .prepare(`INSERT INTO scores(player_id,tournament_id,subject_id,questions_answered,score)
         VALUES(?,?,?,?,?) ON CONFLICT(player_id,tournament_id,subject_id) DO UPDATE SET
         questions_answered=questions_answered+excluded.questions_answered,score=score+excluded.score`);
-      for (const change of changes)
+      for (const change of changes) {
         statement.run(
           change.playerId,
           tournamentId,
           change.subjectId,
           change.answered ?? 1,
-          change.points,
+          change.points
         );
+      }
     });
   }
 
@@ -237,19 +214,16 @@ export class GameRepository {
     tournamentId: number,
     subjectId: number,
     points: number,
-    answered = 1,
+    answered = 1
   ): void {
     this.addScores(tournamentId, [{ playerId, subjectId, points, answered }]);
   }
 
-  rankings(
-    tournamentId: number,
-    playerIds: readonly number[],
-  ): TournamentRanking[] {
+  rankings(tournamentId: number, playerIds: readonly number[]): TournamentRanking[] {
     const all = this.database
       .prepare(
         `SELECT player_id playerId,SUM(score) total FROM scores WHERE tournament_id=?
-      GROUP BY player_id ORDER BY total DESC,player_id`,
+      GROUP BY player_id ORDER BY total DESC,player_id`
       )
       .all(tournamentId) as unknown as Array<{
       playerId: number;
@@ -276,63 +250,61 @@ interface SubjectBuffer {
 
 export class QuestionRepository {
   readonly #buffers = new Map<number, SubjectBuffer>();
-  readonly #subsets = new Map<
-    number,
-    Array<{ subjectId: number; cumulative: number }>
-  >();
+  readonly #subsets = new Map<number, Array<{ subjectId: number; cumulative: number }>>();
   #ageMinutes = 0;
   constructor(
     private readonly database: DatabaseSync,
-    private readonly random: RandomSource,
+    private readonly random: RandomSource
   ) {}
 
   validateSubset(subsetId: number): void {
     const subjects = this.#subjects(subsetId);
-    if (subjects.length === 0)
+    if (subjects.length === 0) {
       throw new Error(`El conjunto ${subsetId} no tiene temas`);
+    }
     const usable = this.database
       .prepare(
         `SELECT count(*) count FROM questions q JOIN question_subset_members m ON m.subject_id=q.subject_id
-      WHERE m.subset_id=? AND q.selection_ifs IS NOT NULL AND q.question<>'' AND q.answer<>''`,
+      WHERE m.subset_id=? AND q.selection_ifs IS NOT NULL AND q.question<>'' AND q.answer<>''`
       )
       .get(subsetId) as { count: number };
-    if (usable.count === 0)
+    if (usable.count === 0) {
       throw new Error(`El conjunto ${subsetId} no tiene preguntas utilizables`);
+    }
   }
 
   next(subsetId: number): TriviaQuestion {
     const subjects = this.#subjects(subsetId);
-    for (
-      let attempt = 0;
-      attempt < Math.max(100, subjects.length * 10);
-      attempt++
-    ) {
+    for (let attempt = 0; attempt < Math.max(100, subjects.length * 10); attempt++) {
       const total = subjects.at(-1)?.cumulative ?? 0;
       const draw = randomInt(this.random, 1, total);
-      const subjectId = subjects.find(
-        (subject) => draw <= subject.cumulative,
-      )?.subjectId;
-      if (subjectId === undefined) continue;
+      const subjectId = subjects.find((subject) => draw <= subject.cumulative)?.subjectId;
+      if (subjectId === undefined) {
+        continue;
+      }
       const buffer = this.#buffers.get(subjectId) ?? { questions: [], idle: 0 };
       this.#buffers.set(subjectId, buffer);
-      if (buffer.questions.length < 5) this.#fill(subjectId, buffer);
+      if (buffer.questions.length < 5) {
+        this.#fill(subjectId, buffer);
+      }
       const question = buffer.questions.shift();
       if (question !== undefined) {
         buffer.idle = 0;
         return question;
       }
     }
-    throw new Error(
-      `No se pudo seleccionar una pregunta del conjunto ${subsetId}`,
-    );
+    throw new Error(`No se pudo seleccionar una pregunta del conjunto ${subsetId}`);
   }
 
   age(minutes = 1): void {
     this.#ageMinutes += minutes;
     for (const [subjectId, buffer] of this.#buffers) {
       buffer.idle += minutes;
-      if (buffer.idle >= 60) this.#buffers.delete(subjectId);
-      else if (buffer.questions.length <= 10) this.#fill(subjectId, buffer);
+      if (buffer.idle >= 60) {
+        this.#buffers.delete(subjectId);
+      } else if (buffer.questions.length <= 10) {
+        this.#fill(subjectId, buffer);
+      }
     }
     if (this.#ageMinutes >= 1_440) {
       this.#subsets.clear();
@@ -340,14 +312,14 @@ export class QuestionRepository {
     }
   }
 
-  #subjects(
-    subsetId: number,
-  ): Array<{ subjectId: number; cumulative: number }> {
+  #subjects(subsetId: number): Array<{ subjectId: number; cumulative: number }> {
     const cached = this.#subsets.get(subsetId);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      return cached;
+    }
     const rows = this.database
       .prepare(
-        "SELECT subject_id subjectId,weight FROM question_subset_members WHERE subset_id=? ORDER BY id",
+        "SELECT subject_id subjectId,weight FROM question_subset_members WHERE subset_id=? ORDER BY id"
       )
       .all(subsetId) as unknown as Array<{ subjectId: number; weight: number }>;
     let cumulative = 0;
@@ -360,14 +332,18 @@ export class QuestionRepository {
   }
 
   #fill(subjectId: number, buffer: SubjectBuffer): void {
-    if (buffer.questions.length > 10) return;
+    if (buffer.questions.length > 10) {
+      return;
+    }
     const subject = this.database
       .prepare("SELECT question_count count FROM subjects WHERE id=?")
       .get(subjectId) as { count: number } | undefined;
-    if (subject === undefined || subject.count <= 0) return;
+    if (subject === undefined || subject.count <= 0) {
+      return;
+    }
     const wanted = 30 - buffer.questions.length;
     const positions = Array.from({ length: wanted * 2 }, () =>
-      randomInt(this.random, 1, subject.count),
+      randomInt(this.random, 1, subject.count)
     );
     const placeholders = positions.map(() => "?").join(",");
     const rows = transaction(this.database, () => {
@@ -375,11 +351,11 @@ export class QuestionRepository {
         .prepare(
           `SELECT q.id,q.question text,q.answer,q.subject_id subjectId,s.subject,a.author
         FROM questions q JOIN subjects s ON s.id=q.subject_id JOIN authors a ON a.id=q.author_id
-        WHERE q.subject_id=? AND q.selection_ifs IN (${placeholders}) ORDER BY q.repeats,q.random_value LIMIT ?`,
+        WHERE q.subject_id=? AND q.selection_ifs IN (${placeholders}) ORDER BY q.repeats,q.random_value LIMIT ?`
         )
         .all(subjectId, ...positions, wanted) as unknown as TriviaQuestion[];
       const update = this.database.prepare(
-        "UPDATE questions SET repeats=COALESCE(repeats,0)+1,random_value=? WHERE id=?",
+        "UPDATE questions SET repeats=COALESCE(repeats,0)+1,random_value=? WHERE id=?"
       );
       for (const question of rows) {
         update.run(randomInt(this.random, 1, 10_000), question.id);
@@ -395,7 +371,7 @@ export class DictionaryRepository {
   lookup(key: string): DictionaryWord | undefined {
     return this.database
       .prepare(
-        "SELECT word,meaning,status FROM dictionary WHERE word_key=? AND status IN ('OK','NF') LIMIT 1",
+        "SELECT word,meaning,status FROM dictionary WHERE word_key=? AND status IN ('OK','NF') LIMIT 1"
       )
       .get(key) as DictionaryWord | undefined;
   }

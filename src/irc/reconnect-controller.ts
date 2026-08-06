@@ -28,7 +28,7 @@ export class ReconnectController {
     private readonly connect: () => Promise<void>,
     private readonly scheduler: ReconnectScheduler = systemScheduler,
     private readonly onError: (error: unknown) => void = (error) =>
-      console.error("IRC connection attempt failed", error),
+      console.error("IRC connection attempt failed", error)
   ) {}
 
   get stopped(): boolean {
@@ -36,13 +36,17 @@ export class ReconnectController {
   }
 
   async start(): Promise<void> {
-    if (this.#started || this.#stopped) return;
+    if (this.#started || this.#stopped) {
+      return;
+    }
     this.#started = true;
     await this.#attempt();
   }
 
   connectionLost(): void {
-    if (!this.#started || this.#stopped) return;
+    if (!this.#started || this.#stopped) {
+      return;
+    }
     if (this.#attempting) {
       this.#retryRequested = true;
       return;
@@ -51,7 +55,9 @@ export class ReconnectController {
   }
 
   registered(): boolean {
-    if (this.#stopped) return false;
+    if (this.#stopped) {
+      return false;
+    }
     this.#retryRequested = false;
     this.#timer?.cancel();
     this.#timer = undefined;
@@ -60,7 +66,9 @@ export class ReconnectController {
   }
 
   stop(): void {
-    if (this.#stopped) return;
+    if (this.#stopped) {
+      return;
+    }
     this.#stopped = true;
     this.#retryRequested = false;
     this.#timer?.cancel();
@@ -68,7 +76,9 @@ export class ReconnectController {
   }
 
   async #attempt(): Promise<void> {
-    if (this.#attempting || this.#stopped) return;
+    if (this.#attempting || this.#stopped) {
+      return;
+    }
     this.#attempting = true;
     this.#retryRequested = false;
     try {
@@ -78,12 +88,16 @@ export class ReconnectController {
       this.#retryRequested = true;
     } finally {
       this.#attempting = false;
-      if (this.#retryRequested) this.#schedule();
+      if (this.#retryRequested) {
+        this.#schedule();
+      }
     }
   }
 
   #schedule(): void {
-    if (this.#timer !== undefined || this.#stopped) return;
+    if (this.#timer !== undefined || this.#stopped) {
+      return;
+    }
     const delayMs = this.#nextDelayMs;
     this.#nextDelayMs = Math.min(delayMs * 2, MAX_RECONNECT_DELAY_MS);
     this.#timer = this.scheduler.schedule(() => {
@@ -102,7 +116,7 @@ export class RegistrationPolicy {
     private readonly channels: readonly string[],
     private readonly join: (channel: string) => void,
     private readonly closeLateConnection: () => void,
-    private readonly emitRegistered: () => void,
+    private readonly emitRegistered: () => void
   ) {}
 
   registered(): boolean {
@@ -110,14 +124,18 @@ export class RegistrationPolicy {
       this.closeLateConnection();
       return false;
     }
-    if (this.#registered) return false;
+    if (this.#registered) {
+      return false;
+    }
     if (!this.reconnect.registered()) {
       this.closeLateConnection();
       return false;
     }
     this.#registered = true;
     this.authenticate();
-    for (const channel of this.channels) this.join(channel);
+    for (const channel of this.channels) {
+      this.join(channel);
+    }
     this.emitRegistered();
     return true;
   }

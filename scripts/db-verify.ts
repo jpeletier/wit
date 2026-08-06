@@ -5,18 +5,17 @@ import { sourceDatabase, targetDatabase } from "./paths.js";
 const target = new DatabaseSync(targetDatabase, { readOnly: true });
 const source = new DatabaseSync(sourceDatabase, { readOnly: true });
 source.function("wit_text", { deterministic: true }, (value) =>
-  value === null ? null : repairMojibake(String(value)).value,
+  value === null ? null : repairMojibake(String(value)).value
 );
 source.function("wit_key", { deterministic: true }, (value) =>
-  lookupKey(repairMojibake(String(value)).value),
+  lookupKey(repairMojibake(String(value)).value)
 );
 
 const specs: Array<{ name: string; source: string; target: string }> = [
   {
     name: "networks",
     source: `SELECT IDNetwork id,wit_text(COALESCE(NetworkName,'')) name,wit_text(COALESCE(Description,'')) description,AllowJOIN_SC allow_join,COALESCE(JoinFree,1) join_free FROM IRCNetworks ORDER BY IDNetwork`,
-    target:
-      "SELECT id,name,description,allow_join,join_free FROM networks ORDER BY id",
+    target: "SELECT id,name,description,allow_join,join_free FROM networks ORDER BY id",
   },
   {
     name: "authors",
@@ -31,8 +30,7 @@ const specs: Array<{ name: string; source: string; target: string }> = [
   {
     name: "subjects",
     source: `SELECT IdSubject id,wit_text(Subject) subject,COALESCE(cnt,0) question_count,IDWitGame game_type_id FROM Subjects ORDER BY IdSubject`,
-    target:
-      "SELECT id,subject,question_count,game_type_id FROM subjects ORDER BY id",
+    target: "SELECT id,subject,question_count,game_type_id FROM subjects ORDER BY id",
   },
   {
     name: "channels",
@@ -43,14 +41,12 @@ const specs: Array<{ name: string; source: string; target: string }> = [
   {
     name: "question_subsets",
     source: `SELECT IDQuestionSubset id,wit_text(COALESCE("DESC",'')) description,COALESCE(Multiplier,1) multiplier,IDChannel channel_id FROM QuestionSubsets ORDER BY IDQuestionSubset`,
-    target:
-      "SELECT id,description,multiplier,channel_id FROM question_subsets ORDER BY id",
+    target: "SELECT id,description,multiplier,channel_id FROM question_subsets ORDER BY id",
   },
   {
     name: "question_subset_members",
     source: `SELECT IDQSubsetMembers id,IDQuestionSubset subset_id,IDSubject subject_id,MAX(COALESCE(weight,1),1) weight FROM QSubsetMembers ORDER BY IDQSubsetMembers`,
-    target:
-      "SELECT id,subset_id,subject_id,weight FROM question_subset_members ORDER BY id",
+    target: "SELECT id,subset_id,subject_id,weight FROM question_subset_members ORDER BY id",
   },
   {
     name: "questions",
@@ -61,14 +57,12 @@ const specs: Array<{ name: string; source: string; target: string }> = [
   {
     name: "dictionary",
     source: `SELECT IDWord id,wit_text(word) word,wit_key(word) word_key,wit_text(meaning) meaning,status FROM Dictionary WHERE status IN ('OK','NF') ORDER BY word`,
-    target:
-      "SELECT id,word,word_key,meaning,status FROM dictionary ORDER BY word",
+    target: "SELECT id,word,word_key,meaning,status FROM dictionary ORDER BY word",
   },
   {
     name: "players",
     source: `SELECT IdPlayer id,IDNetwork network_id,wit_text(NickName) nick,wit_key(NickName) nick_key,LastUsed last_used FROM Players ORDER BY IdPlayer`,
-    target:
-      "SELECT id,network_id,nick,nick_key,last_used FROM players ORDER BY id",
+    target: "SELECT id,network_id,nick,nick_key,last_used FROM players ORDER BY id",
   },
   {
     name: "leagues",
@@ -103,16 +97,17 @@ const specs: Array<{ name: string; source: string; target: string }> = [
 
 try {
   assert(
-    (target.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number })
-      .foreign_keys === 1,
-    "foreign_keys is disabled",
+    (target.prepare("PRAGMA foreign_keys").get() as { foreign_keys: number }).foreign_keys === 1,
+    "foreign_keys is disabled"
   );
   assert(
     target.prepare("PRAGMA foreign_key_check").all().length === 0,
-    "foreign key violations found",
+    "foreign key violations found"
   );
   const counts: Record<string, number> = {};
-  for (const spec of specs) counts[spec.name] = compareEveryField(spec);
+  for (const spec of specs) {
+    counts[spec.name] = compareEveryField(spec);
+  }
   compareRankings();
   verifySchema();
   const audit = Object.fromEntries(
@@ -121,11 +116,11 @@ try {
         key: string;
         value: number;
       }>
-    ).map((row) => [row.key, row.value]),
+    ).map((row) => [row.key, row.value])
   );
   assert(
     audit.mojibake_proposed === audit.mojibake_applied,
-    "not every proposed correction was applied",
+    "not every proposed correction was applied"
   );
   console.log(
     JSON.stringify(
@@ -138,19 +133,15 @@ try {
         forbiddenData: "absent",
       },
       null,
-      2,
-    ),
+      2
+    )
   );
 } finally {
   target.close();
   source.close();
 }
 
-function compareEveryField(spec: {
-  name: string;
-  source: string;
-  target: string;
-}): number {
+function compareEveryField(spec: { name: string; source: string; target: string }): number {
   const expected = source.prepare(spec.source).iterate()[Symbol.iterator]();
   const actual = target.prepare(spec.target).iterate()[Symbol.iterator]();
   let count = 0;
@@ -158,20 +149,15 @@ function compareEveryField(spec: {
     const left = expected.next();
     const right = actual.next();
     if (left.done || right.done) {
-      assert(
-        left.done === right.done,
-        `${spec.name}: row count differs at ${count}`,
-      );
+      assert(left.done === right.done, `${spec.name}: row count differs at ${count}`);
       break;
     }
     const leftValues = Object.values(left.value as Record<string, unknown>);
     const rightValues = Object.values(right.value as Record<string, unknown>);
     assert(
       leftValues.length === rightValues.length &&
-        leftValues.every((value, index) =>
-          Object.is(value, rightValues[index]),
-        ),
-      `${spec.name}: projected fields differ at row ${count + 1}`,
+        leftValues.every((value, index) => Object.is(value, rightValues[index])),
+      `${spec.name}: projected fields differ at row ${count + 1}`
     );
     count++;
   }
@@ -181,13 +167,13 @@ function compareEveryField(spec: {
 function compareRankings(): void {
   const sourceRows = source
     .prepare(
-      `SELECT IDTournament tournament_id,IDPlayer player_id,SUM(Score) total FROM ScoresT GROUP BY IDTournament,IDPlayer ORDER BY IDTournament,total DESC,IDPlayer`,
+      `SELECT IDTournament tournament_id,IDPlayer player_id,SUM(Score) total FROM ScoresT GROUP BY IDTournament,IDPlayer ORDER BY IDTournament,total DESC,IDPlayer`
     )
     .iterate();
   const sourceIterator = sourceRows[Symbol.iterator]();
   const targetRows = target
     .prepare(
-      `SELECT tournament_id,player_id,SUM(score) total FROM scores GROUP BY tournament_id,player_id ORDER BY tournament_id,total DESC,player_id`,
+      `SELECT tournament_id,player_id,SUM(score) total FROM scores GROUP BY tournament_id,player_id ORDER BY tournament_id,total DESC,player_id`
     )
     .iterate();
   const targetIterator = targetRows[Symbol.iterator]();
@@ -200,14 +186,10 @@ function compareRankings(): void {
       break;
     }
     assert(
-      Object.values(left.value as Record<string, unknown>).every(
-        (value, index) =>
-          Object.is(
-            value,
-            Object.values(right.value as Record<string, unknown>)[index],
-          ),
+      Object.values(left.value as Record<string, unknown>).every((value, index) =>
+        Object.is(value, Object.values(right.value as Record<string, unknown>)[index])
       ),
-      `ranking differs at row ${row}`,
+      `ranking differs at row ${row}`
     );
     row++;
   }
@@ -217,11 +199,9 @@ function verifySchema(): void {
   const tables = new Set(
     (
       target
-        .prepare(
-          "SELECT lower(name) name FROM sqlite_master WHERE type='table'",
-        )
+        .prepare("SELECT lower(name) name FROM sqlite_master WHERE type='table'")
         .all() as Array<{ name: string }>
-    ).map((row) => row.name),
+    ).map((row) => row.name)
   );
   for (const table of [
     "admins",
@@ -238,14 +218,15 @@ function verifySchema(): void {
     "question_votes",
     "cylscores",
     "forum_members",
-  ])
+  ]) {
     assert(!tables.has(table), `forbidden table present: ${table}`);
+  }
   const allColumns = [...tables].flatMap((table) =>
     (
       target.prepare(`PRAGMA table_info("${table}")`).all() as Array<{
         name: string;
       }>
-    ).map((row) => row.name.toLowerCase()),
+    ).map((row) => row.name.toLowerCase())
   );
   for (const column of [
     "externalid",
@@ -254,14 +235,15 @@ function verifySchema(): void {
     "ip",
     "secretcode",
     "nickpassword",
-  ])
+  ]) {
     assert(!allColumns.includes(column), `forbidden column present: ${column}`);
+  }
   const indexes = new Set(
     (
-      target
-        .prepare("SELECT name FROM sqlite_master WHERE type='index'")
-        .all() as Array<{ name: string }>
-    ).map((row) => row.name),
+      target.prepare("SELECT name FROM sqlite_master WHERE type='index'").all() as Array<{
+        name: string;
+      }>
+    ).map((row) => row.name)
   );
   for (const index of [
     "idx_questions_selection",
@@ -270,10 +252,13 @@ function verifySchema(): void {
     "idx_games_tournament",
     "idx_scores_ranking",
     "idx_score_history_ranking",
-  ])
+  ]) {
     assert(indexes.has(index), `missing index: ${index}`);
+  }
 }
 
 function assert(condition: boolean, message: string): asserts condition {
-  if (!condition) throw new Error(message);
+  if (!condition) {
+    throw new Error(message);
+  }
 }

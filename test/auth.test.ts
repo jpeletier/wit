@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  buildClientOptions,
-  buildServiceAuthCommand,
-} from "../src/irc/auth.js";
+import { buildClientOptions, buildServiceAuthCommand } from "../src/irc/auth.js";
 
 test("client options map server PASS and SASL PLAIN without inferred NickServ", () => {
   assert.deepEqual(
@@ -25,7 +22,7 @@ test("client options map server PASS and SASL PLAIN without inferred NickServ", 
       authMethod: "sasl",
       username: "wit-account",
       password: "account secret",
-    },
+    }
   );
   const unauthenticated = buildClientOptions({ nick: "Wit" });
   assert.equal("password" in unauthenticated, false);
@@ -42,12 +39,12 @@ test("service auth builder requires an explicit safe target and defaults IDENTIF
     {
       target: "AuthServ@services.example",
       text: "IDENTIFY wit-account service-secret",
-    },
+    }
   );
   assert.equal(buildServiceAuthCommand(undefined), undefined);
   assert.throws(
     () => buildServiceAuthCommand({ target: "", password: "secret" }),
-    /configuration is invalid/u,
+    /configuration is invalid/u
   );
   assert.throws(
     () =>
@@ -56,7 +53,7 @@ test("service auth builder requires an explicit safe target and defaults IDENTIF
         command: "IDENTIFY\nOPER",
         password: "secret",
       }),
-    /configuration is invalid/u,
+    /configuration is invalid/u
   );
   assert.throws(
     () =>
@@ -64,6 +61,6 @@ test("service auth builder requires an explicit safe target and defaults IDENTIF
         target: "AuthServ",
         password: "service secret",
       }),
-    /configuration is invalid/u,
+    /configuration is invalid/u
   );
 });

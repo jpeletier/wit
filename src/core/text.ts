@@ -4,15 +4,15 @@ export function lookupKey(value: string): string {
 
 export function ircCasefold(
   value: string,
-  mapping: "ascii" | "rfc1459" | "strict-rfc1459" = "rfc1459",
+  mapping: "ascii" | "rfc1459" | "strict-rfc1459" = "rfc1459"
 ): string {
   let folded = value.toLowerCase();
-  if (mapping !== "ascii")
-    folded = folded
-      .replaceAll("[", "{")
-      .replaceAll("]", "}")
-      .replaceAll("\\", "|");
-  if (mapping === "rfc1459") folded = folded.replaceAll("^", "~");
+  if (mapping !== "ascii") {
+    folded = folded.replaceAll("[", "{").replaceAll("]", "}").replaceAll("\\", "|");
+  }
+  if (mapping === "rfc1459") {
+    folded = folded.replaceAll("^", "~");
+  }
   return folded;
 }
 
@@ -68,7 +68,7 @@ export function repairMojibake(value: string): {
     return { value, proposed: false, applied: false };
   }
   const reversible = [...new TextEncoder().encode(candidate)].every(
-    (byte, index) => byte === bytes[index],
+    (byte, index) => byte === bytes[index]
   );
   const before = (value.match(/[ÃÂâ€]/gu) ?? []).length;
   const after = (candidate.match(/[ÃÂâ€]/gu) ?? []).length;

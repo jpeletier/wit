@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculate } from "../src/core/expression.js";
-import {
-  definitionExcerpt,
-  mirc,
-  sanitizeIrcText,
-  vbRound,
-} from "../src/core/format.js";
+import { definitionExcerpt, mirc, sanitizeIrcText, vbRound } from "../src/core/format.js";
 import { lookupKey, repairMojibake } from "../src/core/text.js";
 
 test("safe calculator supports precedence, powers, parentheses, decimals and dice", () => {
@@ -17,9 +12,7 @@ test("safe calculator supports precedence, powers, parentheses, decimals and dic
   assert.throws(() => calculate("2d6", { dice: false }));
   assert.throws(() => calculate("globalThis.process.exit()"));
   assert.equal(calculate("2^3^2"), 64);
-  assert.throws(() =>
-    calculate("1+2+3+4+5+6+7+8+9+10+11+12+13+14+15+16+17+18+19+20+21"),
-  );
+  assert.throws(() => calculate("1+2+3+4+5+6+7+8+9+10+11+12+13+14+15+16+17+18+19+20+21"));
   assert.throws(() => calculate("(((((((((((1)))))))))))"));
 });
 
@@ -41,10 +34,7 @@ test("mIRC reset spacer survives irc-client-ts trailing whitespace serialization
 
 test("IRC text sanitizer collapses unsafe separators and preserves Unicode and mIRC controls", () => {
   const controls = "\u0002\u0003\u000f\u0016\u001d\u001f";
-  assert.equal(
-    sanitizeIrcText(`á${controls}\r\n\0\n世界`),
-    `á${controls} 世界`,
-  );
+  assert.equal(sanitizeIrcText(`á${controls}\r\n\0\n世界`), `á${controls} 世界`);
 });
 
 test("definition excerpts sanitize and budget source before separator expansion", () => {

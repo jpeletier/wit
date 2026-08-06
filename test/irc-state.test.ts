@@ -178,7 +178,7 @@ test("fake adapter sanitizes all outbound message and notice text", () => {
   irc.notice("Ana", "aviso\nseguro");
   assert.deepEqual(
     irc.sent.map((entry) => entry.text),
-    ["mensaje seguro", "aviso seguro"],
+    ["mensaje seguro", "aviso seguro"]
   );
 });
 
@@ -190,6 +190,8 @@ function presenceFixture(...channels: string[]): {
   const membership = new IrcMembershipState();
   const tracker = new IrcIdentityTracker((nick) => membership.key(nick));
   const presence = new IrcPresenceCoordinator(membership, tracker);
-  for (const channel of channels) membership.join(channel);
+  for (const channel of channels) {
+    membership.join(channel);
+  }
   return { tracker, membership, presence };
 }

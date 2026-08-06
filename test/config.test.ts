@@ -27,7 +27,7 @@ function bot(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 
 function config(
   botOverrides: Record<string, unknown> = {},
-  rootOverrides: Record<string, unknown> = {},
+  rootOverrides: Record<string, unknown> = {}
 ): Record<string, unknown> {
   return {
     database: "./db/wit.sqlite",
@@ -86,8 +86,8 @@ test("config accepts all documented fields and protocol boundaries", () => {
           inviteEvictionIdleMinutes: 30,
         },
       },
-      { welcomeOnJoin: false },
-    ),
+      { welcomeOnJoin: false }
+    )
   );
   assert.equal(parsed.welcomeOnJoin, false);
   assert.equal(parsed.bots[0]?.tls, false);
@@ -125,13 +125,11 @@ test("config rejects unknown keys with paths", () => {
       }),
       /serviceAuth\.extra/u,
     ],
-    [
-      config({ channelLifecycle: { unknown: 1 } }),
-      /channelLifecycle\.unknown/u,
-    ],
+    [config({ channelLifecycle: { unknown: 1 } }), /channelLifecycle\.unknown/u],
   ];
-  for (const [raw, pattern] of cases)
+  for (const [raw, pattern] of cases) {
     assert.throws(() => parseConfig(raw), pattern);
+  }
 });
 
 test("config rejects invalid root and bot field boundaries", () => {
@@ -157,38 +155,22 @@ test("config rejects invalid root and bot field boundaries", () => {
     ["tls", config({ tls: "true" }), /\.tls/u],
     ["network zero", config({ networkId: 0 }), /\.networkId/u],
     ["network fraction", config({ networkId: 1.5 }), /\.networkId/u],
-    [
-      "network unsafe",
-      config({ networkId: Number.MAX_SAFE_INTEGER + 1 }),
-      /\.networkId/u,
-    ],
+    ["network unsafe", config({ networkId: Number.MAX_SAFE_INTEGER + 1 }), /\.networkId/u],
     ["channels empty", config({ channels: [] }), /\.channels/u],
     ["channel prefix", config({ channels: ["trivia"] }), /channels\[0\]/u],
-    [
-      "channel whitespace",
-      config({ channels: ["#bad name"] }),
-      /channels\[0\]/u,
-    ],
+    ["channel whitespace", config({ channels: ["#bad name"] }), /channels\[0\]/u],
     ["channel comma", config({ channels: ["#bad,name"] }), /channels\[0\]/u],
     ["channel colon", config({ channels: ["#bad:name"] }), /channels\[0\]/u],
     ["channel control", config({ channels: ["#bad\0name"] }), /channels\[0\]/u],
     ["channel long", config({ channels: [longChannel] }), /channels\[0\]/u],
-    [
-      "channel multibyte",
-      config({ channels: [multibyteChannel] }),
-      /channels\[0\]/u,
-    ],
+    ["channel multibyte", config({ channels: [multibyteChannel] }), /channels\[0\]/u],
     [
       "channel duplicate",
       config({ channels: ["#Trivia", "#trivia"] }),
       /channels\[1\].*duplicated/u,
     ],
     ["delay zero", config({ outboundDelayMs: 0 }), /outboundDelayMs/u],
-    [
-      "delay high",
-      config({ outboundDelayMs: MAX_OUTBOUND_DELAY_MS + 1 }),
-      /outboundDelayMs/u,
-    ],
+    ["delay high", config({ outboundDelayMs: MAX_OUTBOUND_DELAY_MS + 1 }), /outboundDelayMs/u],
     ["delay fraction", config({ outboundDelayMs: 1.5 }), /outboundDelayMs/u],
     [
       "message idle zero",
@@ -209,11 +191,7 @@ test("config rejects invalid root and bot field boundaries", () => {
       config({ channelLifecycle: { inviteEvictionIdleMinutes: 1.5 } }),
       /inviteEvictionIdleMinutes/u,
     ],
-    [
-      "max channels zero",
-      config({ channelLifecycle: { maxChannels: 0 } }),
-      /maxChannels/u,
-    ],
+    ["max channels zero", config({ channelLifecycle: { maxChannels: 0 } }), /maxChannels/u],
     [
       "max channels high",
       config({ channelLifecycle: { maxChannels: MAX_JOINED_CHANNELS + 1 } }),
@@ -228,8 +206,9 @@ test("config rejects invalid root and bot field boundaries", () => {
       /channels cannot exceed channelLifecycle\.maxChannels/u,
     ],
   ];
-  for (const [name, raw, pattern] of cases)
+  for (const [name, raw, pattern] of cases) {
     assert.throws(() => parseConfig(raw), pattern, name);
+  }
 });
 
 test("config validates credentials without exposing secret values", () => {
@@ -281,31 +260,19 @@ test("config validates credentials without exposing secret values", () => {
 });
 
 test("config rejects conflicting bot identities and network channels", () => {
-  const duplicate = config(
-    {},
-    { bots: [bot(), bot({ nick: "wIT", server: "IRC.EXAMPLE.NET" })] },
-  );
-  assert.throws(
-    () => parseConfig(duplicate),
-    /duplicates a connection identity/u,
-  );
+  const duplicate = config({}, { bots: [bot(), bot({ nick: "wIT", server: "IRC.EXAMPLE.NET" })] });
+  assert.throws(() => parseConfig(duplicate), /duplicates a connection identity/u);
   const duplicateAssignment = config(
     {},
-    { bots: [bot(), bot({ nick: "Other", channels: ["#TRIVIA"] })] },
+    { bots: [bot(), bot({ nick: "Other", channels: ["#TRIVIA"] })] }
   );
   assert.throws(
     () => parseConfig(duplicateAssignment),
-    /duplicates a network\/channel assignment/u,
+    /duplicates a network\/channel assignment/u
   );
-  const sharedNetwork = config(
-    {},
-    { bots: [bot(), bot({ nick: "Other", channels: ["#other"] })] },
-  );
+  const sharedNetwork = config({}, { bots: [bot(), bot({ nick: "Other", channels: ["#other"] })] });
   assert.equal(parseConfig(sharedNetwork).bots.length, 2);
-  const separateNetworks = config(
-    {},
-    { bots: [bot(), bot({ nick: "Other", networkId: 2 })] },
-  );
+  const separateNetworks = config({}, { bots: [bot(), bot({ nick: "Other", networkId: 2 })] });
   assert.equal(parseConfig(separateNetworks).bots.length, 2);
 });
 
@@ -315,11 +282,7 @@ test("loadConfig wraps read, JSON and validation errors with path and cause", ()
   const malformed = join(directory, "malformed.json");
   const invalid = join(directory, "invalid.json");
   writeFileSync(malformed, "{ secret contents", "utf8");
-  writeFileSync(
-    invalid,
-    JSON.stringify(config({ serverPassword: "****" })),
-    "utf8",
-  );
+  writeFileSync(invalid, JSON.stringify(config({ serverPassword: "****" })), "utf8");
   try {
     for (const [path, pattern] of [
       [missing, /Unable to read config file/u],
@@ -340,26 +303,11 @@ test("loadConfig wraps read, JSON and validation errors with path and cause", ()
 });
 
 test("database environment override must be a nonempty safe path", () => {
-  assert.equal(
-    selectDatabasePath("configured.sqlite", undefined),
-    "configured.sqlite",
-  );
-  assert.equal(
-    selectDatabasePath("configured.sqlite", "override.sqlite"),
-    "override.sqlite",
-  );
-  assert.throws(
-    () => selectDatabasePath("configured.sqlite", ""),
-    /WIT_DATABASE/u,
-  );
-  assert.throws(
-    () => selectDatabasePath("configured.sqlite", "  "),
-    /WIT_DATABASE/u,
-  );
-  assert.throws(
-    () => selectDatabasePath("configured.sqlite", "bad\0path"),
-    /WIT_DATABASE/u,
-  );
+  assert.equal(selectDatabasePath("configured.sqlite", undefined), "configured.sqlite");
+  assert.equal(selectDatabasePath("configured.sqlite", "override.sqlite"), "override.sqlite");
+  assert.throws(() => selectDatabasePath("configured.sqlite", ""), /WIT_DATABASE/u);
+  assert.throws(() => selectDatabasePath("configured.sqlite", "  "), /WIT_DATABASE/u);
+  assert.throws(() => selectDatabasePath("configured.sqlite", "bad\0path"), /WIT_DATABASE/u);
 });
 
 function capture(action: () => unknown): unknown {

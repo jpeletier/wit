@@ -7,7 +7,7 @@ test("question maintenance succeeds without logging", () => {
   const logs: string[] = [];
   runQuestionMaintenance(
     () => ages++,
-    (message) => logs.push(message),
+    (message) => logs.push(message)
   );
   assert.equal(ages, 1);
   assert.deepEqual(logs, []);
@@ -19,7 +19,7 @@ test("question maintenance logs a concise Error message", () => {
     () => {
       throw new Error("database busy");
     },
-    (message) => logs.push(message),
+    (message) => logs.push(message)
   );
   assert.deepEqual(logs, ["Question maintenance failed: database busy"]);
 });
@@ -30,7 +30,7 @@ test("question maintenance collapses multiline and control error details", () =>
     () => {
       throw new Error("database\r\n\0\nbusy");
     },
-    (message) => logs.push(message),
+    (message) => logs.push(message)
   );
   assert.deepEqual(logs, ["Question maintenance failed: database busy"]);
   assert.doesNotMatch(logs[0]!, /[\r\n\0]/u);
@@ -43,7 +43,7 @@ test("question maintenance normalizes non-Error failures", () => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- exercise hostile callback behavior
       throw 503;
     },
-    (message) => logs.push(message),
+    (message) => logs.push(message)
   );
   assert.deepEqual(logs, ["Question maintenance failed: 503"]);
 });
@@ -60,7 +60,7 @@ test("question maintenance contains hostile non-Error conversion", () => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error -- exercise hostile callback behavior
       throw hostile;
     },
-    (message) => logs.push(message),
+    (message) => logs.push(message)
   );
   assert.deepEqual(logs, ["Question maintenance failed: unknown failure"]);
 });
@@ -70,7 +70,9 @@ test("question maintenance can succeed on a later invocation", () => {
   const logs: string[] = [];
   const age = (): void => {
     attempts++;
-    if (attempts === 1) throw new Error("temporary failure");
+    if (attempts === 1) {
+      throw new Error("temporary failure");
+    }
   };
   runQuestionMaintenance(age, (message) => logs.push(message));
   runQuestionMaintenance(age, (message) => logs.push(message));

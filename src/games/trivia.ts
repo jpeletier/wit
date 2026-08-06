@@ -44,31 +44,34 @@ export function normalizeTriviaAnswer(value: string): string {
     const line = sanitizeIrcText(rawLine)
       .trim()
       .replaceAll(/[ \t]+/gu, " ");
-    if (line === "") continue;
+    if (line === "") {
+      continue;
+    }
     const lineTokens = line.split(" ");
     if (
       tokens.length > 0 &&
-      tokens.at(-1)?.toLocaleLowerCase("es-ES") ===
-        lineTokens[0]?.toLocaleLowerCase("es-ES")
-    )
+      tokens.at(-1)?.toLocaleLowerCase("es-ES") === lineTokens[0]?.toLocaleLowerCase("es-ES")
+    ) {
       lineTokens.shift();
+    }
     tokens.push(...lineTokens);
   }
   return tokens.join(" ");
 }
 
-export function matchesTriviaAnswer(
-  expected: string,
-  submitted: string,
-): boolean {
+export function matchesTriviaAnswer(expected: string, submitted: string): boolean {
   const words = answerWords(expected);
-  if (words.length === 0 || words.length > 10) return false;
+  if (words.length === 0 || words.length > 10) {
+    return false;
+  }
   const available = answerWords(submitted.toLocaleLowerCase("es-ES"));
   return words
     .map((word) => word.toLocaleLowerCase("es-ES"))
     .every((word) => {
       const index = available.indexOf(word);
-      if (index < 0) return false;
+      if (index < 0) {
+        return false;
+      }
       available.splice(index, 1);
       return true;
     });
@@ -77,9 +80,11 @@ export function matchesTriviaAnswer(
 export function matchesNumericAnswer(
   expected: number,
   submitted: string,
-  random: RandomSource,
+  random: RandomSource
 ): boolean {
-  if (submitted.length >= 30) return false;
+  if (submitted.length >= 30) {
+    return false;
+  }
   try {
     return (
       calculate(submitted, {
@@ -97,11 +102,9 @@ export function hintWord(word: string, level: 0 | 1 | 2): string {
   const characters = [...word];
   return characters
     .map((character, index) => {
-      if (
-        (level >= 1 && index === 0) ||
-        (level === 2 && index === characters.length - 1)
-      )
+      if ((level >= 1 && index === 0) || (level === 2 && index === characters.length - 1)) {
         return character;
+      }
       return /^[A-Za-z0-9ñÑ]$/u.test(character) ? "-" : character;
     })
     .join("");
@@ -111,11 +114,7 @@ export function triviaPoints(stage: number, multiplier: number): number {
   return vbRound((stage < 35 ? 100 : stage < 45 ? 75 : 50) * multiplier);
 }
 
-export function numericHint(
-  answer: number,
-  level: 0 | 1 | 2,
-  random: RandomSource,
-): string {
+export function numericHint(answer: number, level: 0 | 1 | 2, random: RandomSource): string {
   const spread = level === 0 ? 30 : level === 1 ? 20 : 10;
   let left = answer - random.next() * spread;
   let right = answer + random.next() * spread;
@@ -141,9 +140,11 @@ export class TriviaGame {
     private readonly total: number,
     private readonly multiplier: number,
     private readonly nextQuestion: () => TriviaQuestion,
-    private readonly random: RandomSource,
+    private readonly random: RandomSource
   ) {
-    if (total < 1) throw new Error("Trivia requires at least one question");
+    if (total < 1) {
+      throw new Error("Trivia requires at least one question");
+    }
   }
 
   get stage(): number {
@@ -154,14 +155,17 @@ export class TriviaGame {
   }
 
   tick(): TriviaEvent[] {
-    if (this.#ended) return [];
+    if (this.#ended) {
+      return [];
+    }
     const events: TriviaEvent[] = [];
     if (this.#stage === 1 && this.#questionCount >= this.total) {
       this.#ended = true;
       return [{ type: "complete" }];
     }
-    if (this.#stage === 5) events.push(this.#startQuestion());
-    else if (this.#stage === 35 || this.#stage === 45) {
+    if (this.#stage === 5) {
+      events.push(this.#startQuestion());
+    } else if (this.#stage === 35 || this.#stage === 45) {
       const level = this.#stage === 35 ? 1 : 2;
       events.push({ type: "hint", level, text: this.#hint(level) });
     } else if (this.#stage === 55 && this.#question !== undefined) {
@@ -176,21 +180,22 @@ export class TriviaGame {
 
   submit(nick: string, text: string): TriviaEvent | undefined {
     const question = this.#question;
-    if (question === undefined || this.#stage <= 5) return undefined;
+    if (question === undefined || this.#stage <= 5) {
+      return undefined;
+    }
     const correct =
       this.#numeric === undefined
         ? matchesTriviaAnswer(question.answer.trim(), text)
         : matchesNumericAnswer(this.#numeric, text, this.random);
-    if (!correct) return undefined;
+    if (!correct) {
+      return undefined;
+    }
     const event: TriviaEvent = {
       type: "correct",
       nick,
       submitted: text,
       answerType: this.#numeric === undefined ? "text" : "numeric",
-      answer:
-        this.#numeric === undefined
-          ? question.answer.trim()
-          : String(this.#numeric),
+      answer: this.#numeric === undefined ? question.answer.trim() : String(this.#numeric),
       question,
       seconds: this.#stage - 5,
       points: triviaPoints(this.#stage, this.multiplier),
@@ -217,8 +222,9 @@ export class TriviaGame {
         break;
       }
     }
-    if (question === undefined)
+    if (question === undefined) {
       throw new Error("No hay preguntas utilizables después de 1000 intentos");
+    }
     const words = answerWords(question.answer.trim());
     this.#question = question;
     this.#numeric = words.length === 1 ? parseNumeric(words[0]!) : undefined;
@@ -233,9 +239,12 @@ export class TriviaGame {
   }
 
   #hint(level: 0 | 1 | 2): string {
-    if (this.#question === undefined) return "";
-    if (this.#numeric !== undefined)
+    if (this.#question === undefined) {
+      return "";
+    }
+    if (this.#numeric !== undefined) {
       return numericHint(this.#numeric, level, this.random);
+    }
     return `${answerWords(this.#question.answer.trim())
       .map((word) => hintWord(word, level))
       .join(" ")} `;
@@ -247,8 +256,9 @@ function parseNumeric(value: string): number | undefined {
   if (
     normalized.length >= 30 ||
     !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(normalized)
-  )
+  ) {
     return undefined;
+  }
   const result = Number(normalized);
   return Number.isFinite(result) ? result : undefined;
 }

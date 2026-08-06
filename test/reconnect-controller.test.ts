@@ -57,7 +57,7 @@ test("initial failures retry indefinitely with exponential capped backoff", asyn
       throw new Error(`failure ${attempts}`);
     },
     scheduler,
-    (error) => errors.push(error),
+    (error) => errors.push(error)
   );
   await controller.start();
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -103,10 +103,12 @@ test("successful registration resets backoff and rejoins configured channels onc
   const controller = new ReconnectController(
     async () => {
       attempts++;
-      if (attempts < 3) throw new Error("temporary");
+      if (attempts < 3) {
+        throw new Error("temporary");
+      }
     },
     scheduler,
-    () => {},
+    () => {}
   );
   await controller.start();
   scheduler.runNext();
@@ -128,7 +130,7 @@ test("successful registration resets backoff and rejoins configured channels onc
     () => {
       events.push("registered");
       order.push("registered");
-    },
+    }
   );
   assert.equal(registration.registered(), true);
   assert.equal(registration.registered(), false);
@@ -138,12 +140,7 @@ test("successful registration resets backoff and rejoins configured channels onc
   assert.equal(registration.registered(), true);
   assert.deepEqual(joins, ["#one", "#two", "#one", "#two"]);
   assert.deepEqual(events, ["registered", "registered"]);
-  assert.deepEqual(order.slice(0, 4), [
-    "authenticate",
-    "join:#one",
-    "join:#two",
-    "registered",
-  ]);
+  assert.deepEqual(order.slice(0, 4), ["authenticate", "join:#one", "join:#two", "registered"]);
 });
 
 test("intentional shutdown cancels retry and ignores later disconnects", async () => {
@@ -170,7 +167,7 @@ test("intentional shutdown during an attempt cannot schedule another", async () 
       new Promise<void>((resolve) => {
         finishAttempt = resolve;
       }),
-    scheduler,
+    scheduler
   );
   const started = controller.start();
   controller.stop();
@@ -196,7 +193,7 @@ test("late registration after stop closes without joins, events, or retries", as
     ["#one", "#two"],
     (channel) => joins.push(channel),
     () => closes++,
-    () => events.push("registered"),
+    () => events.push("registered")
   );
   assert.equal(registration.registered(), false);
   assert.deepEqual(joins, []);

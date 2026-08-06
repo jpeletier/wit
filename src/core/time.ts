@@ -22,12 +22,14 @@ const madridFormatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 export function madridDateTimeParts(date: Date): MadridDateTimeParts {
-  if (!Number.isFinite(date.getTime())) throw new RangeError("Invalid date");
+  if (!Number.isFinite(date.getTime())) {
+    throw new RangeError("Invalid date");
+  }
   const parts = Object.fromEntries(
     madridFormatter
       .formatToParts(date)
       .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)]),
+      .map((part) => [part.type, Number(part.value)])
   ) as Record<string, number>;
   return {
     year: parts.year!,

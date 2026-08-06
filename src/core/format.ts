@@ -13,12 +13,14 @@ export function sanitizeIrcText(value: string): string {
 }
 
 export function vbRound(value: number): number {
-  if (!Number.isFinite(value))
+  if (!Number.isFinite(value)) {
     throw new RangeError("Cannot round a non-finite value");
+  }
   const floor = Math.floor(value);
   const fraction = value - floor;
-  if (Math.abs(fraction - 0.5) < Number.EPSILON * Math.max(1, Math.abs(value)))
+  if (Math.abs(fraction - 0.5) < Number.EPSILON * Math.max(1, Math.abs(value))) {
     return floor % 2 === 0 ? floor : floor + 1;
+  }
   return Math.round(value);
 }
 

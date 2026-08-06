@@ -1,11 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -22,9 +16,7 @@ test("runtime schema validation accepts migration version 1", () => {
   const database = new DatabaseSync(":memory:");
   try {
     database.exec(migration);
-    database.exec(
-      "INSERT INTO schema_migrations(version,applied_at) VALUES(1,'test')",
-    );
+    database.exec("INSERT INTO schema_migrations(version,applied_at) VALUES(1,'test')");
     validateRuntimeSchema(database);
   } finally {
     database.close();
@@ -40,10 +32,7 @@ test("openDatabase rejects missing, directory and empty file paths", () => {
 
     const empty = join(directory, "empty.sqlite");
     writeFileSync(empty, "");
-    assert.throws(
-      () => openDatabase(empty),
-      /schema_migrations table is missing/u,
-    );
+    assert.throws(() => openDatabase(empty), /schema_migrations table is missing/u);
   });
 });
 
@@ -51,10 +40,7 @@ test("runtime schema validation rejects absent markers and runtime tables", () =
   const noMarker = new DatabaseSync(":memory:");
   try {
     noMarker.exec("CREATE TABLE networks(id INTEGER)");
-    assert.throws(
-      () => validateRuntimeSchema(noMarker),
-      /schema_migrations table is missing/u,
-    );
+    assert.throws(() => validateRuntimeSchema(noMarker), /schema_migrations table is missing/u);
   } finally {
     noMarker.close();
   }
@@ -63,11 +49,11 @@ test("runtime schema validation rejects absent markers and runtime tables", () =
   try {
     missingTable.exec(migration);
     missingTable.exec(
-      "INSERT INTO schema_migrations(version,applied_at) VALUES(1,'test'); DROP TABLE dictionary",
+      "INSERT INTO schema_migrations(version,applied_at) VALUES(1,'test'); DROP TABLE dictionary"
     );
     assert.throws(
       () => validateRuntimeSchema(missingTable),
-      /runtime table is missing: dictionary/u,
+      /runtime table is missing: dictionary/u
     );
   } finally {
     missingTable.close();
@@ -97,9 +83,7 @@ test("openDatabase validates before enabling runtime PRAGMAs", () => {
     const path = join(directory, "valid.sqlite");
     const created = new DatabaseSync(path);
     created.exec(migration);
-    created.exec(
-      "INSERT INTO schema_migrations(version,applied_at) VALUES(1,'test')",
-    );
+    created.exec("INSERT INTO schema_migrations(version,applied_at) VALUES(1,'test')");
     created.close();
 
     const database = openDatabase(path);
@@ -116,31 +100,25 @@ test("openDatabase validates before enabling runtime PRAGMAs", () => {
   });
 });
 
-function structuralDatabase(
-  versions: readonly (number | string)[],
-): DatabaseSync {
+function structuralDatabase(versions: readonly (number | string)[]): DatabaseSync {
   const database = new DatabaseSync(":memory:");
   database.exec("CREATE TABLE schema_migrations(version)");
-  for (const table of REQUIRED_RUNTIME_TABLES)
+  for (const table of REQUIRED_RUNTIME_TABLES) {
     database.exec(`CREATE TABLE ${table}(id INTEGER)`);
-  const insertText = database.prepare(
-    "INSERT INTO schema_migrations(version) VALUES(?)",
-  );
+  }
+  const insertText = database.prepare("INSERT INTO schema_migrations(version) VALUES(?)");
   for (const version of versions) {
-    if (typeof version === "number")
-      database.exec(
-        `INSERT INTO schema_migrations(version) VALUES(${version})`,
-      );
-    else insertText.run(version);
+    if (typeof version === "number") {
+      database.exec(`INSERT INTO schema_migrations(version) VALUES(${version})`);
+    } else {
+      insertText.run(version);
+    }
   }
   return database;
 }
 
 function pragmaNumber(database: DatabaseSync, name: string): number {
-  const row = database.prepare(`PRAGMA ${name}`).get() as Record<
-    string,
-    number
-  >;
+  const row = database.prepare(`PRAGMA ${name}`).get() as Record<string, number>;
   return Object.values(row)[0]!;
 }
 

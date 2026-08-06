@@ -12,16 +12,10 @@ import {
 } from "../src/games/trivia.js";
 
 test("text matching is unordered, case-insensitive, accent-sensitive and ignores empty tokens", () => {
-  assert.equal(
-    matchesTriviaAnswer("Nueva  York", "en YORK nueva ciudad"),
-    true,
-  );
+  assert.equal(matchesTriviaAnswer("Nueva  York", "en YORK nueva ciudad"), true);
   assert.equal(matchesTriviaAnswer("camión", "CAMION"), false);
   assert.equal(matchesTriviaAnswer("a a", "a"), false);
-  assert.equal(
-    matchesTriviaAnswer("1 2 3 4 5 6 7 8 9 10 11", "1 2 3 4 5 6 7 8 9 10 11"),
-    false,
-  );
+  assert.equal(matchesTriviaAnswer("1 2 3 4 5 6 7 8 9 10 11", "1 2 3 4 5 6 7 8 9 10 11"), false);
 });
 
 test("answer normalization collapses only duplicate tokens across source line breaks", () => {
@@ -49,10 +43,14 @@ test("numeric Trivia uses its injected random source for deterministic dice", ()
   const game = new TriviaGame(1, 1, () => question, {
     next: () => draws.shift() ?? 0,
   });
-  for (let tick = 0; tick < 6; tick++) game.tick();
+  for (let tick = 0; tick < 6; tick++) {
+    game.tick();
+  }
   const result = game.submit("Ana", "1d6");
   assert.equal(result?.type, "correct");
-  if (result?.type === "correct") assert.equal(result.answerType, "numeric");
+  if (result?.type === "correct") {
+    assert.equal(result.answerType, "numeric");
+  }
   assert.equal(draws.length, 0);
 });
 
@@ -75,7 +73,9 @@ test("round stages, score tiers and displayed maximum use banker rounding", () =
     author: "Autor",
   };
   const game = new TriviaGame(1, 0.625, () => question, { next: () => 0 });
-  for (let index = 0; index < 5; index++) game.tick();
+  for (let index = 0; index < 5; index++) {
+    game.tick();
+  }
   assert.equal(game.submit("Ana", "madrid"), undefined);
   game.tick();
   const result = game.submit("Ana", "MADRID");
@@ -98,7 +98,9 @@ test("legacy stages display on stage 5, accept immediately, and complete on the 
     author: "x",
   };
   const game = new TriviaGame(1, 1, () => question, { next: () => 0 });
-  for (let tick = 0; tick < 5; tick++) assert.deepEqual(game.tick(), []);
+  for (let tick = 0; tick < 5; tick++) {
+    assert.deepEqual(game.tick(), []);
+  }
   assert.equal(game.tick()[0]?.type, "question");
   assert.equal(game.stage, 6);
   assert.equal(game.submit("n", "a")?.type, "correct");
@@ -110,7 +112,7 @@ test("numeric hints consume two independent random draws", () => {
   const draws = [0.25, 0.75];
   assert.equal(
     numericHint(100, 0, { next: () => draws.shift() ?? 0 }),
-    "El número está entre\u00036 92\u0003 y\u00036 122\u0003",
+    "El número está entre\u00036 92\u0003 y\u00036 122\u0003"
   );
   assert.equal(draws.length, 0);
 });
@@ -139,7 +141,9 @@ test("unusable long answers are skipped without consuming another round", () => 
   });
   for (let tick = 0; tick < 6; tick++) {
     const event = game.tick()[0];
-    if (event?.type === "question") assert.equal(event.question.id, 2);
+    if (event?.type === "question") {
+      assert.equal(event.question.id, 2);
+    }
   }
 });
 
@@ -160,7 +164,9 @@ test("selected answers are trimmed for timeout reveals without changing question
       assert.equal(event.question.text, question.text);
       assert.equal(event.question.answer, "Madrid");
     }
-    if (event?.type === "timeout") timeout = event;
+    if (event?.type === "timeout") {
+      timeout = event;
+    }
   }
   assert.equal(timeout?.question.answer, "Madrid");
 });

@@ -39,30 +39,31 @@ export function buildClientOptions(config: ClientOptionConfig): ClientOptions {
     bot: true,
     reconnect: false,
     ctcpReplies: { version: "Wit TypeScript" },
-    ...(config.serverPassword === undefined
-      ? {}
-      : { serverPassword: config.serverPassword }),
+    ...(config.serverPassword === undefined ? {} : { serverPassword: config.serverPassword }),
     ...accountOptions,
   };
 }
 
 export function buildServiceAuthCommand(
-  config: ServiceAuth | undefined,
+  config: ServiceAuth | undefined
 ): ServiceAuthCommand | undefined {
-  if (config === undefined) return undefined;
+  if (config === undefined) {
+    return undefined;
+  }
   if (
     !authToken(config.target) ||
     !authToken(config.password) ||
     (config.command !== undefined && !authToken(config.command)) ||
     (config.account !== undefined && !authToken(config.account))
-  )
+  ) {
     throw new Error("Service authentication configuration is invalid");
+  }
   return {
     target: sanitizeIrcText(config.target),
     text: sanitizeIrcText(
       [config.command ?? "IDENTIFY", config.account, config.password]
         .filter((part) => part !== undefined)
-        .join(" "),
+        .join(" ")
     ),
   };
 }

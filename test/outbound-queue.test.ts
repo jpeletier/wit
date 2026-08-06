@@ -45,10 +45,10 @@ class FakeScheduler implements OutboundScheduler {
     for (;;) {
       const next = this.tasks
         .filter((task) => !task.cancelled && task.due <= target)
-        .sort(
-          (left, right) => left.due - right.due || left.order - right.order,
-        )[0];
-      if (next === undefined) break;
+        .sort((left, right) => left.due - right.due || left.order - right.order)[0];
+      if (next === undefined) {
+        break;
+      }
       next.cancelled = true;
       this.now = next.due;
       next.callback();
@@ -92,9 +92,7 @@ test("outbound queue logs send errors and continues", async () => {
   const scheduler = new FakeScheduler();
   const errors: unknown[] = [];
   const sent: string[] = [];
-  const queue = new OutboundQueue(2_000, scheduler, (error) =>
-    errors.push(error),
-  );
+  const queue = new OutboundQueue(2_000, scheduler, (error) => errors.push(error));
   const failure = new Error("send failed");
   queue.enqueue(() => {
     throw failure;

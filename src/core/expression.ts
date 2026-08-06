@@ -7,21 +7,17 @@ export interface ExpressionOptions {
 }
 
 type Token =
-  | { type: "number"; value: number }
-  | { type: "operator"; value: string }
-  | { type: "eof" };
+  { type: "number"; value: number } | { type: "operator"; value: string } | { type: "eof" };
 
-export function calculate(
-  expression: string,
-  options: ExpressionOptions = {},
-): number {
-  if (expression.length > (options.maxLength ?? 200))
+export function calculate(expression: string, options: ExpressionOptions = {}): number {
+  if (expression.length > (options.maxLength ?? 200)) {
     throw new Error("Expression is too long");
+  }
   const tokens = tokenize(
     expression,
     options.dice ?? true,
     options.random ?? Math.random,
-    options.maxTerms ?? 20,
+    options.maxTerms ?? 20
   );
   let position = 0;
   let depth = 0;
@@ -30,28 +26,30 @@ export function calculate(
 
   const primary = (): number => {
     const token = consume();
-    if (token.type === "number") return token.value;
+    if (token.type === "number") {
+      return token.value;
+    }
     if (token.type === "operator" && token.value === "(") {
       depth++;
-      if (depth > (options.maxDepth ?? 10))
+      if (depth > (options.maxDepth ?? 10)) {
         throw new Error("Expression is too deeply nested");
+      }
       const value = addSubtract();
       const close = consume();
-      if (close.type !== "operator" || close.value !== ")")
+      if (close.type !== "operator" || close.value !== ")") {
         throw new Error("Missing closing parenthesis");
+      }
       depth--;
       return value;
     }
-    if (token.type === "operator" && ["+", "-"].includes(token.value))
+    if (token.type === "operator" && ["+", "-"].includes(token.value)) {
       return token.value === "-" ? -primary() : primary();
+    }
     throw new Error("Expected a number");
   };
   const power = (): number => {
     let value = primary();
-    while (
-      current().type === "operator" &&
-      (current() as { value: string }).value === "^"
-    ) {
+    while (current().type === "operator" && (current() as { value: string }).value === "^") {
       consume();
       value **= primary();
     }
@@ -83,17 +81,13 @@ export function calculate(
   };
 
   const result = addSubtract();
-  if (current().type !== "eof" || !Number.isFinite(result))
+  if (current().type !== "eof" || !Number.isFinite(result)) {
     throw new Error("Invalid expression");
+  }
   return result;
 }
 
-function tokenize(
-  input: string,
-  dice: boolean,
-  random: () => number,
-  maxTerms: number,
-): Token[] {
+function tokenize(input: string, dice: boolean, random: () => number, maxTerms: number): Token[] {
   const tokens: Token[] = [];
   let index = 0;
   while (index < input.length) {
@@ -102,28 +96,33 @@ function tokenize(
       index++;
       continue;
     }
-    const number = input
-      .slice(index)
-      .match(/^(?:\d+(?:[.,]\d*)?|[.,]\d+)/u)?.[0];
+    const number = input.slice(index).match(/^(?:\d+(?:[.,]\d*)?|[.,]\d+)/u)?.[0];
     if (number !== undefined) {
       index += number.length;
       let value = Number(number.replace(",", "."));
       const diceMatch = input.slice(index).match(/^[dD](\d+)/u);
       if (diceMatch !== null) {
-        if (!dice) throw new Error("Dice are not allowed");
+        if (!dice) {
+          throw new Error("Dice are not allowed");
+        }
         const sides = Number(diceMatch[1]);
-        if (!Number.isInteger(value) || value < 1 || sides < 1)
+        if (!Number.isInteger(value) || value < 1 || sides < 1) {
           throw new Error("Invalid dice");
-        if (value > 100 || sides > 1_000_000) throw new Error("Invalid dice");
+        }
+        if (value > 100 || sides > 1_000_000) {
+          throw new Error("Invalid dice");
+        }
         let rolled = 0;
-        for (let roll = 0; roll < value; roll++)
+        for (let roll = 0; roll < value; roll++) {
           rolled += Math.floor(random() * sides) + 1;
+        }
         value = rolled;
         index += diceMatch[0].length;
       }
       tokens.push({ type: "number", value });
-      if (tokens.filter((token) => token.type === "number").length > maxTerms)
+      if (tokens.filter((token) => token.type === "number").length > maxTerms) {
         throw new Error("Expression has too many terms");
+      }
       continue;
     }
     if ("+-*/^()".includes(character)) {

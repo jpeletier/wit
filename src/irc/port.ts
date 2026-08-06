@@ -30,23 +30,22 @@ export class IrcIdentityTracker {
     const key = this.fold(nick);
     const maskKey = identityMask(mask);
     const existing = this.#byNick.get(key);
-    if (existing !== undefined && existing.mask === maskKey)
+    if (existing !== undefined && existing.mask === maskKey) {
       return existing.identity;
+    }
     const base = maskKey === undefined ? `nick:${key}` : maskKey;
     const identity = `${base}#${++this.#sequence}`;
     this.#byNick.set(key, { identity, mask: maskKey, nick });
     return identity;
   }
-  rename(
-    previousNick: string,
-    nick: string,
-    mask?: { user: string; host: string },
-  ): string {
+  rename(previousNick: string, nick: string, mask?: { user: string; host: string }): string {
     const previousKey = this.fold(previousNick);
     const existing = this.#byNick.get(previousKey);
     const identity = existing?.identity ?? this.resolve(previousNick, mask);
     const tracked = existing ?? this.#byNick.get(previousKey)!;
-    if (tracked.mask === undefined) tracked.mask = identityMask(mask);
+    if (tracked.mask === undefined) {
+      tracked.mask = identityMask(mask);
+    }
     tracked.nick = nick;
     this.#byNick.delete(previousKey);
     this.#byNick.set(this.fold(nick), tracked);
@@ -63,7 +62,9 @@ export class IrcIdentityTracker {
     this.#byNick.clear();
     for (const tracked of identities) {
       const key = this.fold(tracked.nick);
-      if (!this.#byNick.has(key)) this.#byNick.set(key, tracked);
+      if (!this.#byNick.has(key)) {
+        this.#byNick.set(key, tracked);
+      }
     }
   }
   clear(): void {
@@ -71,9 +72,7 @@ export class IrcIdentityTracker {
   }
 }
 
-function identityMask(
-  mask: { user: string; host: string } | undefined,
-): string | undefined {
+function identityMask(mask: { user: string; host: string } | undefined): string | undefined {
   return mask === undefined
     ? undefined
     : `${mask.user}@${mask.host}`.normalize("NFC").toLocaleLowerCase("en-US");
@@ -105,7 +104,7 @@ export class IrcMembershipState {
   #caseMapping: IrcCaseMapping;
   constructor(
     caseMapping: IrcCaseMapping = "rfc1459",
-    public prefix = "(qaohv)~&@%+",
+    public prefix = "(qaohv)~&@%+"
   ) {
     this.#caseMapping = caseMapping;
   }
@@ -137,56 +136,57 @@ export class IrcMembershipState {
   setMembers(channel: string, members: readonly IrcMember[]): void {
     const channelKey = this.key(channel);
     const previous = this.#members.get(channelKey);
-    if (previous !== undefined && previous.members.length > 0)
+    if (previous !== undefined && previous.members.length > 0) {
       this.#previousMembers.set(channelKey, previous);
+    }
     this.#members.set(channelKey, { channel, members: [...members] });
   }
   memberNicks(channel: string): readonly string[] {
     const channelKey = this.key(channel);
     const current = this.#members.get(channelKey)?.members ?? [];
     const members =
-      current.length > 0
-        ? current
-        : (this.#previousMembers.get(channelKey)?.members ?? current);
+      current.length > 0 ? current : (this.#previousMembers.get(channelKey)?.members ?? current);
     return members.map((member) => member.nick);
   }
   addMember(channel: string, nick: string): void {
     const channelKey = this.key(channel);
     const members = this.#members.get(channelKey)?.members ?? [];
-    if (!members.some((member) => this.key(member.nick) === this.key(nick)))
+    if (!members.some((member) => this.key(member.nick) === this.key(nick))) {
       members.push({ nick, prefix: "" });
+    }
     this.#members.set(channelKey, { channel, members });
   }
   removeMember(channel: string, nick: string): void {
     const channelKey = this.key(channel);
     const state = this.#members.get(channelKey);
-    if (state === undefined) return;
+    if (state === undefined) {
+      return;
+    }
     this.#members.set(channelKey, {
       channel: state.channel,
-      members: state.members.filter(
-        (member) => this.key(member.nick) !== this.key(nick),
-      ),
+      members: state.members.filter((member) => this.key(member.nick) !== this.key(nick)),
     });
   }
   removeMemberEverywhere(nick: string): void {
-    for (const channel of this.#members.keys())
+    for (const channel of this.#members.keys()) {
       this.removeMember(channel, nick);
+    }
   }
   hasMember(nick: string): boolean {
     return [...this.#members.entries()].some(
       ([channel, state]) =>
         this.#joined.has(channel) &&
-        state.members.some(
-          (member) => this.key(member.nick) === this.key(nick),
-        ),
+        state.members.some((member) => this.key(member.nick) === this.key(nick))
     );
   }
   rename(previousNick: string, nick: string): void {
     for (const state of this.#members.values()) {
       const member = state.members.find(
-        (candidate) => this.key(candidate.nick) === this.key(previousNick),
+        (candidate) => this.key(candidate.nick) === this.key(previousNick)
       );
-      if (member !== undefined) member.nick = nick;
+      if (member !== undefined) {
+        member.nick = nick;
+      }
     }
   }
   configure(caseMapping: IrcCaseMapping, prefix: string): boolean {
@@ -199,8 +199,9 @@ export class IrcMembershipState {
       this.#joined.clear();
       this.#members.clear();
       this.#previousMembers.clear();
-      for (const channel of joined)
+      for (const channel of joined) {
         this.#joined.set(this.key(channel), channel);
+      }
       this.#restoreMembers(this.#members, members);
       this.#restoreMembers(this.#previousMembers, previousMembers);
     }
@@ -212,20 +213,13 @@ export class IrcMembershipState {
     const modes = match?.[1] ?? "qaohv";
     const prefixes = match?.[2] ?? "~&@%+";
     const operators = new Set(
-      [...prefixes].filter((_, index) =>
-        ["q", "a", "o"].includes(modes[index] ?? ""),
-      ),
+      [...prefixes].filter((_, index) => ["q", "a", "o"].includes(modes[index] ?? ""))
     );
     return (this.#members.get(this.key(channel))?.members ?? []).some(
-      (member) =>
-        this.key(member.nick) === this.key(nick) &&
-        operators.has(member.prefix),
+      (member) => this.key(member.nick) === this.key(nick) && operators.has(member.prefix)
     );
   }
-  #restoreMembers(
-    target: Map<string, ChannelMembers>,
-    states: readonly ChannelMembers[],
-  ): void {
+  #restoreMembers(target: Map<string, ChannelMembers>, states: readonly ChannelMembers[]): void {
     for (const state of states) {
       const key = this.key(state.channel);
       const existing = target.get(key);
@@ -236,13 +230,13 @@ export class IrcMembershipState {
         });
         continue;
       }
-      for (const member of state.members)
+      for (const member of state.members) {
         if (
-          !existing.members.some(
-            (candidate) => this.key(candidate.nick) === this.key(member.nick),
-          )
-        )
+          !existing.members.some((candidate) => this.key(candidate.nick) === this.key(member.nick))
+        ) {
           existing.members.push(member);
+        }
+      }
     }
   }
 }
@@ -250,7 +244,7 @@ export class IrcMembershipState {
 export class IrcPresenceCoordinator {
   constructor(
     private readonly membership: IrcMembershipState,
-    private readonly identities: IrcIdentityTracker,
+    private readonly identities: IrcIdentityTracker
   ) {}
 
   join(channel: string, nick: string): void {
@@ -266,17 +260,15 @@ export class IrcPresenceCoordinator {
   leaveChannel(channel: string): void {
     const nicks = this.membership.memberNicks(channel);
     this.membership.part(channel);
-    for (const nick of nicks) this.#forgetIfAbsent(nick);
+    for (const nick of nicks) {
+      this.#forgetIfAbsent(nick);
+    }
   }
   quit(nick: string): void {
     this.membership.removeMemberEverywhere(nick);
     this.identities.forget(nick);
   }
-  rename(
-    previousNick: string,
-    nick: string,
-    mask?: { user: string; host: string },
-  ): string {
+  rename(previousNick: string, nick: string, mask?: { user: string; host: string }): string {
     const identity = this.identities.rename(previousNick, nick, mask);
     this.membership.rename(previousNick, nick);
     return identity;
@@ -286,7 +278,9 @@ export class IrcPresenceCoordinator {
     this.identities.clear();
   }
   #forgetIfAbsent(nick: string): void {
-    if (!this.membership.hasMember(nick)) this.identities.forget(nick);
+    if (!this.membership.hasMember(nick)) {
+      this.identities.forget(nick);
+    }
   }
 }
 
@@ -322,8 +316,9 @@ export class FakeIrcPort implements IrcPort {
     this.setCaseMapping(value);
   }
   setCaseMapping(value: IrcCaseMapping, prefix = this.state.prefix): void {
-    if (this.state.configure(value, prefix))
+    if (this.state.configure(value, prefix)) {
       this.emit({ type: "caseMapping", caseMapping: value });
+    }
   }
   get joinedChannels(): readonly string[] {
     return this.state.joinedChannels();
@@ -333,11 +328,7 @@ export class FakeIrcPort implements IrcPort {
   }
   disconnect(reason?: string): void {
     this.disconnectCount++;
-    this.emit(
-      reason === undefined
-        ? { type: "disconnected" }
-        : { type: "disconnected", reason },
-    );
+    this.emit(reason === undefined ? { type: "disconnected" } : { type: "disconnected", reason });
   }
   join(channel: string): void {
     this.sent.push({ kind: "join", target: channel, text: "" });
@@ -369,12 +360,20 @@ export class FakeIrcPort implements IrcPort {
     return this.#listeners.size;
   }
   emit(event: IrcEvent): void {
-    if (event.type === "join" && event.self) this.state.join(event.channel);
-    if ((event.type === "part" || event.type === "kick") && event.self)
+    if (event.type === "join" && event.self) {
+      this.state.join(event.channel);
+    }
+    if ((event.type === "part" || event.type === "kick") && event.self) {
       this.state.part(event.channel);
-    if (event.type === "nick")
+    }
+    if (event.type === "nick") {
       this.state.rename(event.previousNick, event.user.nick);
-    if (event.type === "disconnected") this.state.clear();
-    for (const listener of this.#listeners) listener(event);
+    }
+    if (event.type === "disconnected") {
+      this.state.clear();
+    }
+    for (const listener of this.#listeners) {
+      listener(event);
+    }
   }
 }

@@ -16,10 +16,13 @@ import { cylTranscript, triviaTranscript } from "./fixtures/transcripts.js";
 const fakePorts: FakeIrcPort[] = [];
 
 test.after(() => {
-  for (const irc of fakePorts)
-    for (const entry of irc.sent)
-      if (entry.kind === "message" || entry.kind === "notice")
+  for (const irc of fakePorts) {
+    for (const entry of irc.sent) {
+      if (entry.kind === "message" || entry.kind === "notice") {
         assert.doesNotMatch(entry.text, /[\r\n\0]/u);
+      }
+    }
+  }
 });
 
 function fixture(options: Partial<BotOptions> = {}): {
@@ -68,7 +71,7 @@ function fixture(options: Partial<BotOptions> = {}): {
         ...DEFAULT_CHANNEL_LIFECYCLE,
         ...options.channelLifecycle,
       },
-    },
+    }
   );
   return { bot, irc, db, games, clock };
 }
@@ -95,8 +98,8 @@ test("INVITE joins, greets the inviter and suppresses duplicate requests", () =>
       (entry) =>
         entry.kind === "message" &&
         entry.target === "#invitado" &&
-        entry.text === "Hola, Ana me ha invitado aquí.",
-    ),
+        entry.text === "Hola, Ana me ha invitado aquí."
+    )
   );
   bot.handle({ type: "invite", channel: "#invitado", user: inviter });
   assert.ok(irc.sent.at(-1)?.text.includes("Ya estoy"));
@@ -120,7 +123,7 @@ test("silent channels are left after the configured message idle timeout", () =>
   bot.tick();
   assert.equal(
     irc.sent.some((entry) => entry.kind === "part"),
-    false,
+    false
   );
   clock.advance(1);
   bot.tick();
@@ -175,7 +178,9 @@ test("a successful game start resets the no-game channel timeout", () => {
   clock.advance(2_000 * 60_000);
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #juego 5" });
   for (let round = 0; round < 5; round++) {
-    for (let tick = 0; tick < 6; tick++) bot.tick();
+    for (let tick = 0; tick < 6; tick++) {
+      bot.tick();
+    }
     bot.handle({
       type: "message",
       channel: "#juego",
@@ -189,7 +194,7 @@ test("a successful game start resets the no-game channel timeout", () => {
   bot.tick();
   assert.equal(
     irc.sent.some((entry) => entry.kind === "part"),
-    false,
+    false
   );
   db.close();
 });
@@ -215,13 +220,11 @@ test("INVITE never evicts a channel with an active game", () => {
   bot.handle({ type: "invite", channel: "#nuevo", user });
   assert.equal(
     irc.sent.some((entry) => entry.kind === "part"),
-    false,
+    false
   );
   assert.equal(
-    irc.sent.some(
-      (entry) => entry.kind === "join" && entry.target === "#nuevo",
-    ),
-    false,
+    irc.sent.some((entry) => entry.kind === "join" && entry.target === "#nuevo"),
+    false
   );
   assert.ok(irc.sent.at(-1)?.text.includes("ninguno lleva 60 minutos"));
   db.close();
@@ -250,7 +253,7 @@ test("channel activity survives a late CASEMAPPING change", () => {
   bot.tick();
   assert.equal(
     irc.sent.some((entry) => entry.kind === "part"),
-    false,
+    false
   );
   db.close();
 });
@@ -278,23 +281,17 @@ test("INVITE at capacity evicts the most idle eligible channel", () => {
   });
   clock.advance(31 * 60_000);
   bot.handle({ type: "invite", channel: "#nuevo", user });
-  let commands = irc.sent.filter(
-    (entry) => entry.kind === "part" || entry.kind === "join",
-  );
+  let commands = irc.sent.filter((entry) => entry.kind === "part" || entry.kind === "join");
   assert.equal(commands.at(-1)?.kind, "part");
   assert.equal(
-    commands.some(
-      (entry) => entry.kind === "join" && entry.target === "#nuevo",
-    ),
-    false,
+    commands.some((entry) => entry.kind === "join" && entry.target === "#nuevo"),
+    false
   );
   irc.emit({ type: "part", channel: "#viejo", user: self, self: true });
-  commands = irc.sent.filter(
-    (entry) => entry.kind === "part" || entry.kind === "join",
-  );
+  commands = irc.sent.filter((entry) => entry.kind === "part" || entry.kind === "join");
   assert.deepEqual(
     commands.slice(-2).map((entry) => entry.kind),
-    ["part", "join"],
+    ["part", "join"]
   );
   assert.equal(commands.at(-2)?.target, "#viejo");
   assert.equal(commands.at(-1)?.target, "#nuevo");
@@ -319,12 +316,12 @@ test("capacity replacement waits for server PART confirmation", () => {
   });
   clock.advance(60 * 60_000);
   bot.handle({ type: "invite", channel: "#nuevo", user });
-  for (let tick = 0; tick < 10; tick++) bot.tick();
+  for (let tick = 0; tick < 10; tick++) {
+    bot.tick();
+  }
   assert.equal(
-    irc.sent.some(
-      (entry) => entry.kind === "join" && entry.target === "#nuevo",
-    ),
-    false,
+    irc.sent.some((entry) => entry.kind === "join" && entry.target === "#nuevo"),
+    false
   );
   assert.equal(irc.sent.filter((entry) => entry.kind === "part").length, 1);
   db.close();
@@ -347,10 +344,8 @@ test("INVITE at capacity refuses when no channel has been idle for an hour", () 
   });
   bot.handle({ type: "invite", channel: "#nuevo", user });
   assert.equal(
-    irc.sent.some(
-      (entry) => entry.kind === "join" && entry.target === "#nuevo",
-    ),
-    false,
+    irc.sent.some((entry) => entry.kind === "join" && entry.target === "#nuevo"),
+    false
   );
   assert.ok(irc.sent.at(-1)?.text.includes("ninguno lleva 60 minutos"));
   db.close();
@@ -368,10 +363,8 @@ test("pending configured joins reserve channel capacity", () => {
   bot.handle({ type: "registered" });
   bot.handle({ type: "invite", channel: "#nuevo", user });
   assert.equal(
-    irc.sent.some(
-      (entry) => entry.kind === "join" && entry.target === "#nuevo",
-    ),
-    false,
+    irc.sent.some((entry) => entry.kind === "join" && entry.target === "#nuevo"),
+    false
   );
   assert.ok(irc.sent.at(-1)?.text.includes("ya estoy en 1 canales"));
   db.close();
@@ -393,21 +386,17 @@ test("commands report busy channels, authorize stop, welcome every join and forc
     irc.sent.some(
       (entry) =>
         entry.kind === "notice" &&
-        entry.text ===
-          "La hora en Madrid es 2026-08-05 02:00:00.000 (Europe/Madrid)",
-    ),
+        entry.text === "La hora en Madrid es 2026-08-05 02:00:00.000 (Europe/Madrid)"
+    )
   );
   assert.equal(
-    irc.sent.filter(
-      (entry) => entry.kind === "notice" && entry.text.startsWith("Bienvenido"),
-    ).length,
-    2,
+    irc.sent.filter((entry) => entry.kind === "notice" && entry.text.startsWith("Bienvenido"))
+      .length,
+    2
   );
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
   bot.handle({ type: "privateMessage", user, text: "CYL #c 5" });
-  assert.ok(
-    irc.sent.some((entry) => entry.text.includes("Ya hay una partida activa")),
-  );
+  assert.ok(irc.sent.some((entry) => entry.text.includes("Ya hay una partida activa")));
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c STOP" });
   assert.ok(irc.sent.some((entry) => entry.text.includes("Sólo un operador")));
   irc.setOperator("#c", "Ana");
@@ -421,11 +410,7 @@ test("commands require membership, STOP matches type, defaults/clamps and self-k
   const { bot, irc, db } = fixture();
   const user = { identity: "u", nick: "Ana" };
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c nope" });
-  assert.ok(
-    irc.sent.some(
-      (entry) => entry.text === "Primero debo estar en el canal #c.",
-    ),
-  );
+  assert.ok(irc.sent.some((entry) => entry.text === "Primero debo estar en el canal #c."));
   irc.emit({
     type: "join",
     channel: "#c",
@@ -436,9 +421,7 @@ test("commands require membership, STOP matches type, defaults/clamps and self-k
   irc.setOperator("#c", "Ana");
   bot.handle({ type: "privateMessage", user, text: "CYL #c STOP" });
   assert.ok(
-    irc.sent.some((entry) =>
-      entry.text.includes("No hay ninguna partida activa de Cifras"),
-    ),
+    irc.sent.some((entry) => entry.text.includes("No hay ninguna partida activa de Cifras"))
   );
   irc.emit({
     type: "kick",
@@ -453,15 +436,15 @@ test("commands require membership, STOP matches type, defaults/clamps and self-k
         num_questions: number;
       }
     ).num_questions,
-    5,
+    5
   );
   assert.equal(
     (
-      db
-        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
-        .get() as { count: number }
+      db.prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL").get() as {
+        count: number;
+      }
     ).count,
-    1,
+    1
   );
   irc.emit({
     type: "join",
@@ -472,11 +455,11 @@ test("commands require membership, STOP matches type, defaults/clamps and self-k
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #d nonsense" });
   assert.equal(
     (
-      db
-        .prepare("SELECT num_questions FROM games ORDER BY id DESC LIMIT 1")
-        .get() as { num_questions: number }
+      db.prepare("SELECT num_questions FROM games ORDER BY id DESC LIMIT 1").get() as {
+        num_questions: number;
+      }
     ).num_questions,
-    20,
+    20
   );
   db.close();
 });
@@ -499,7 +482,9 @@ test("active Trivia survives late CASEMAPPING for messages and completion", () =
   irc.caseMapping = "rfc1459";
   assert.equal(irc.isJoined("#trivia{"), true);
   for (let round = 0; round < 5; round++) {
-    for (let tick = 0; tick < 6; tick++) bot.tick();
+    for (let tick = 0; tick < 6; tick++) {
+      bot.tick();
+    }
     bot.handle({
       type: "message",
       channel: "#trivia{",
@@ -511,11 +496,11 @@ test("active Trivia survives late CASEMAPPING for messages and completion", () =
   bot.tick();
   assert.equal(
     (
-      db
-        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
-        .get() as { count: number }
+      db.prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL").get() as {
+        count: number;
+      }
     ).count,
-    1,
+    1
   );
   db.close();
 });
@@ -540,11 +525,11 @@ test("operator STOP finds a session after CASEMAPPING changes", () => {
   });
   assert.equal(
     (
-      db
-        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
-        .get() as { count: number }
+      db.prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL").get() as {
+        count: number;
+      }
     ).count,
-    1,
+    1
   );
   db.close();
 });
@@ -553,28 +538,28 @@ test("CASEMAPPING session collisions finalize every game without overwrite", () 
   const { bot, irc, db } = fixture();
   const user = { identity: "u", nick: "Ana" };
   irc.caseMapping = "ascii";
-  for (const channel of ["#Game[", "#Game{"])
+  for (const channel of ["#Game[", "#Game{"]) {
     irc.emit({
       type: "join",
       channel,
       user: { identity: "bot", nick: "Wit" },
       self: true,
     });
+  }
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #Game[ 5" });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #Game{ 5" });
   irc.caseMapping = "rfc1459";
   assert.equal(
     (
-      db
-        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
-        .get() as { count: number }
+      db.prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL").get() as {
+        count: number;
+      }
     ).count,
-    2,
+    2
   );
   assert.equal(
-    irc.sent.filter((entry) => entry.text.includes("conflicto de CASEMAPPING"))
-      .length,
-    2,
+    irc.sent.filter((entry) => entry.text.includes("conflicto de CASEMAPPING")).length,
+    2
   );
   db.close();
 });
@@ -590,7 +575,9 @@ test("deterministic full Trivia transcript", () => {
   });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
   for (let round = 0; round < 5; round++) {
-    for (let tick = 0; tick < 6; tick++) bot.tick();
+    for (let tick = 0; tick < 6; tick++) {
+      bot.tick();
+    }
     bot.handle({ type: "message", channel: "#c", user, text: "Respuesta" });
   }
   bot.tick();
@@ -612,7 +599,9 @@ test("deterministic full CYL transcript", () => {
     self: true,
   });
   bot.handle({ type: "privateMessage", user, text: "CYL #c 1" });
-  for (let tick = 0; tick < 5; tick++) bot.tick();
+  for (let tick = 0; tick < 5; tick++) {
+    bot.tick();
+  }
   bot.handle({ type: "message", channel: "#c", user, text: "AA" });
   bot.handle({
     type: "message",
@@ -626,7 +615,9 @@ test("deterministic full CYL transcript", () => {
     user: { identity: "u3", nick: "Carla" },
     text: "AAAA",
   });
-  for (let tick = 5; tick < 60; tick++) bot.tick();
+  for (let tick = 5; tick < 60; tick++) {
+    bot.tick();
+  }
   const transcript = irc.sent
     .filter((entry) => entry.kind === "message")
     .map((entry) => entry.text);
@@ -636,9 +627,7 @@ test("deterministic full CYL transcript", () => {
 
 test("discarded fourth Letras candidate creates no player or completion entry", () => {
   const { bot, irc, db } = fixture();
-  db.exec(
-    "INSERT INTO dictionary VALUES(4,'ÁA','áa','doble a acentuada','OK')",
-  );
+  db.exec("INSERT INTO dictionary VALUES(4,'ÁA','áa','doble a acentuada','OK')");
   const users = [
     { identity: "u1", nick: "Ana", word: "AA" },
     { identity: "u2", nick: "Bea", word: "AAA" },
@@ -656,41 +645,42 @@ test("discarded fourth Letras candidate creates no player or completion entry", 
     user: users[0]!,
     text: "CYL #c 1",
   });
-  for (let tick = 0; tick < 5; tick++) bot.tick();
-  for (const user of users)
+  for (let tick = 0; tick < 5; tick++) {
+    bot.tick();
+  }
+  for (const user of users) {
     bot.handle({
       type: "message",
       channel: "#c",
       user,
       text: user.word,
     });
+  }
   assert.equal(
     (
       db.prepare("SELECT count(*) count FROM players").get() as {
         count: number;
       }
     ).count,
-    3,
+    3
   );
-  for (let tick = 5; tick < 60; tick++) bot.tick();
-  const standings = irc.sent.find((entry) =>
-    entry.text.startsWith("Puntuaciones:"),
-  );
+  for (let tick = 5; tick < 60; tick++) {
+    bot.tick();
+  }
+  const standings = irc.sent.find((entry) => entry.text.startsWith("Puntuaciones:"));
   assert.ok(standings?.text.includes("Carla"));
   assert.ok(standings?.text.includes("Bea"));
   assert.ok(standings?.text.includes("Ana"));
   assert.equal(standings?.text.includes("Dora"), false);
-  const completion = irc.sent.filter((entry) =>
-    entry.text.includes("Clasificación General"),
-  );
+  const completion = irc.sent.filter((entry) => entry.text.includes("Clasificación General"));
   assert.equal(completion.length, 3);
   assert.equal(
     completion.some((entry) => entry.text.includes("Dora")),
-    false,
+    false
   );
   assert.equal(
     irc.sent.some((entry) => entry.text.includes("Dora")),
-    false,
+    false
   );
   db.close();
 });
@@ -706,23 +696,18 @@ test("numeric Trivia displays submitted expression, canonical result, author and
     self: true,
   });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
-  for (let tick = 0; tick < 6; tick++) bot.tick();
+  for (let tick = 0; tick < 6; tick++) {
+    bot.tick();
+  }
   bot.handle({ type: "message", channel: "#c", user, text: "6*7" });
-  const line = irc.sent.find(
-    (entry) => entry.kind === "message" && entry.text.includes("6*7=42"),
-  );
+  const line = irc.sent.find((entry) => entry.kind === "message" && entry.text.includes("6*7=42"));
   assert.ok(line?.text.includes("Autor"));
   assert.ok(line?.text.includes("#1"));
   db.close();
 });
 
 test("text Trivia always reveals the canonical answer for flexible matches", () => {
-  for (const submitted of [
-    "nueva york",
-    "NUEVA YORK",
-    "York Nueva",
-    "en York Nueva ciudad",
-  ]) {
+  for (const submitted of ["nueva york", "NUEVA YORK", "York Nueva", "en York Nueva ciudad"]) {
     const { bot, irc, db } = fixture();
     db.exec("UPDATE questions SET answer='Nueva York' WHERE id=1");
     const user = { identity: "u", nick: "Ana" };
@@ -733,11 +718,11 @@ test("text Trivia always reveals the canonical answer for flexible matches", () 
       self: true,
     });
     bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
-    for (let tick = 0; tick < 6; tick++) bot.tick();
+    for (let tick = 0; tick < 6; tick++) {
+      bot.tick();
+    }
     bot.handle({ type: "message", channel: "#c", user, text: submitted });
-    const reveal = irc.sent.find((entry) =>
-      entry.text.includes("La respuesta era"),
-    );
+    const reveal = irc.sent.find((entry) => entry.text.includes("La respuesta era"));
     assert.ok(reveal?.text.includes("\u0002Nueva York\u0002"));
     assert.equal(reveal?.text.includes("="), false);
     db.close();
@@ -759,11 +744,11 @@ test("numeric Trivia displays literals once and expressions with canonical resul
       self: true,
     });
     bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
-    for (let tick = 0; tick < 6; tick++) bot.tick();
+    for (let tick = 0; tick < 6; tick++) {
+      bot.tick();
+    }
     bot.handle({ type: "message", channel: "#c", user, text: submitted });
-    const reveal = irc.sent.find((entry) =>
-      entry.text.includes("La respuesta era"),
-    );
+    const reveal = irc.sent.find((entry) => entry.text.includes("La respuesta era"));
     assert.ok(reveal?.text.includes(expected));
     db.close();
   }
@@ -783,14 +768,12 @@ test("Trivia sanitizes database question text and line-broken repeated answers",
     self: true,
   });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
-  for (let tick = 0; tick < 6; tick++) bot.tick();
-  assert.ok(
-    irc.sent.some((entry) => entry.text.includes("Pregunta inyectada fin")),
-  );
+  for (let tick = 0; tick < 6; tick++) {
+    bot.tick();
+  }
+  assert.ok(irc.sent.some((entry) => entry.text.includes("Pregunta inyectada fin")));
   bot.handle({ type: "message", channel: "#c", user, text: "Respuesta" });
-  const reveal = irc.sent.find((entry) =>
-    entry.text.includes("La respuesta era"),
-  );
+  const reveal = irc.sent.find((entry) => entry.text.includes("La respuesta era"));
   assert.ok(reveal?.text.includes("\u0002Respuesta\u0002"));
   assert.equal(reveal?.text.includes("Respuesta RESPUESTA"), false);
   db.close();
@@ -809,14 +792,14 @@ test("CYL sanitizes database definitions before displaying excerpts", () => {
     self: true,
   });
   bot.handle({ type: "privateMessage", user, text: "CYL #c 1" });
-  for (let tick = 0; tick < 5; tick++) bot.tick();
+  for (let tick = 0; tick < 5; tick++) {
+    bot.tick();
+  }
   bot.handle({ type: "message", channel: "#c", user, text: "AA" });
-  for (let tick = 5; tick < 60; tick++) bot.tick();
-  assert.ok(
-    irc.sent.some((entry) =>
-      entry.text.includes(': "primera línea segunda parte"'),
-    ),
-  );
+  for (let tick = 5; tick < 60; tick++) {
+    bot.tick();
+  }
+  assert.ok(irc.sent.some((entry) => entry.text.includes(': "primera línea segunda parte"')));
   db.close();
 });
 
@@ -830,25 +813,27 @@ test("Cifras exact answer closes next tick with legacy wording and 200-point del
     self: true,
   });
   bot.handle({ type: "privateMessage", user, text: "CYL #c 4" });
-  for (let challenge = 0; challenge < 3; challenge++)
-    for (let tick = 0; tick < 60; tick++) bot.tick();
-  for (let tick = 0; tick < 5; tick++) bot.tick();
+  for (let challenge = 0; challenge < 3; challenge++) {
+    for (let tick = 0; tick < 60; tick++) {
+      bot.tick();
+    }
+  }
+  for (let tick = 0; tick < 5; tick++) {
+    bot.tick();
+  }
   bot.handle({ type: "message", channel: "#c", user, text: "5^3-6*4" });
   assert.equal(
     irc.sent.some((entry) => entry.text.includes("consiguió el número exacto")),
-    false,
+    false
   );
   bot.tick();
   assert.ok(
     irc.sent.some(
       (entry) =>
-        entry.text ===
-        "\u00037¡ Ana consiguió el número exacto !\u0003\u00032 5^3-6*4 = 101\u0003",
-    ),
+        entry.text === "\u00037¡ Ana consiguió el número exacto !\u0003\u00032 5^3-6*4 = 101\u0003"
+    )
   );
-  assert.ok(
-    irc.sent.some((entry) => entry.text.includes("(\u00034+200\u0003)")),
-  );
+  assert.ok(irc.sent.some((entry) => entry.text.includes("(\u00034+200\u0003)")));
   db.close();
 });
 
@@ -864,16 +849,13 @@ test("question initialization does not create orphan games", () => {
   });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
   assert.equal(
-    (db.prepare("SELECT count(*) count FROM games").get() as { count: number })
-      .count,
-    0,
+    (db.prepare("SELECT count(*) count FROM games").get() as { count: number }).count,
+    0
   );
   assert.ok(
     irc.sent.some(
-      (entry) =>
-        entry.kind === "notice" &&
-        entry.text.includes("no tiene preguntas utilizables"),
-    ),
+      (entry) => entry.kind === "notice" && entry.text.includes("no tiene preguntas utilizables")
+    )
   );
   db.close();
 });
@@ -893,16 +875,14 @@ test("IRC announcement failure finalizes the newly created game", () => {
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
   assert.equal(
     (
-      db
-        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
-        .get() as { count: number }
+      db.prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL").get() as {
+        count: number;
+      }
     ).count,
-    1,
+    1
   );
   assert.ok(
-    irc.sent.some(
-      (entry) => entry.kind === "notice" && entry.text.includes("send failed"),
-    ),
+    irc.sent.some((entry) => entry.kind === "notice" && entry.text.includes("send failed"))
   );
   db.close();
 });
@@ -917,24 +897,25 @@ test("score persistence failure visibly finalizes and removes the accepted game"
     self: true,
   });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
-  for (let tick = 0; tick < 6; tick++) bot.tick();
+  for (let tick = 0; tick < 6; tick++) {
+    bot.tick();
+  }
   games.addScore = () => {
     throw new Error("write failed");
   };
   bot.handle({ type: "message", channel: "#c", user, text: "Respuesta" });
   assert.ok(
     irc.sent.some(
-      (entry) =>
-        entry.text.includes("write failed") && entry.text.includes("terminado"),
-    ),
+      (entry) => entry.text.includes("write failed") && entry.text.includes("terminado")
+    )
   );
   assert.equal(
     (
-      db
-        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
-        .get() as { count: number }
+      db.prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL").get() as {
+        count: number;
+      }
     ).count,
-    1,
+    1
   );
   bot.handle({ type: "message", channel: "#c", user, text: "?2" });
   assert.ok(irc.sent.some((entry) => entry.text === "Ana: 2=2"));
@@ -958,10 +939,8 @@ test("finalization failure is visible and still removes the session", () => {
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c STOP" });
   assert.ok(
     irc.sent.some(
-      (entry) =>
-        entry.text.includes("Error al finalizar") &&
-        entry.text.includes("finalize failed"),
-    ),
+      (entry) => entry.text.includes("Error al finalizar") && entry.text.includes("finalize failed")
+    )
   );
   bot.handle({ type: "message", channel: "#c", user, text: "?2" });
   assert.ok(irc.sent.some((entry) => entry.text === "Ana: 2=2"));
@@ -995,10 +974,7 @@ test("disconnect removes session when both finalization and IRC error reporting 
     console.error = originalError;
   }
   assert.ok(
-    logs.some(
-      (line) =>
-        line.includes("finalize failed") && line.includes("connection closed"),
-    ),
+    logs.some((line) => line.includes("finalize failed") && line.includes("connection closed"))
   );
   bot.handle({ type: "message", channel: "#c", user, text: "?2" });
   assert.ok(irc.sent.some((entry) => entry.text === "Ana: 2=2"));
@@ -1008,27 +984,25 @@ test("disconnect removes session when both finalization and IRC error reporting 
 test("a bot allows two concurrent Trivia games and blocks a third and CYL", () => {
   const { bot, irc, db } = fixture();
   const user = { identity: "u", nick: "Ana" };
-  for (const channel of ["#a", "#b", "#c", "#d"])
+  for (const channel of ["#a", "#b", "#c", "#d"]) {
     irc.emit({
       type: "join",
       channel,
       user: { identity: "bot", nick: "Wit" },
       self: true,
     });
+  }
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #a 5" });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #b 5" });
   bot.handle({ type: "privateMessage", user, text: "TRIVIAL #c 5" });
   bot.handle({ type: "privateMessage", user, text: "CYL #d 5" });
   assert.equal(
-    irc.sent.filter(
-      (entry) => entry.kind === "notice" && entry.text.includes("demasiados"),
-    ).length,
-    2,
+    irc.sent.filter((entry) => entry.kind === "notice" && entry.text.includes("demasiados")).length,
+    2
   );
   assert.equal(
-    (db.prepare("SELECT count(*) count FROM games").get() as { count: number })
-      .count,
-    2,
+    (db.prepare("SELECT count(*) count FROM games").get() as { count: number }).count,
+    2
   );
   db.close();
 });
@@ -1052,11 +1026,11 @@ test("nick changes keep identity and disconnect ends active game without failove
   assert.ok(irc.sent.some((entry) => entry.text.includes("se desconectó")));
   assert.equal(
     (
-      db
-        .prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL")
-        .get() as { count: number }
+      db.prepare("SELECT count(*) count FROM games WHERE date_end IS NOT NULL").get() as {
+        count: number;
+      }
     ).count,
-    1,
+    1
   );
   db.close();
 });

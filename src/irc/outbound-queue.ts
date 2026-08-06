@@ -21,8 +21,9 @@ const systemScheduler: OutboundScheduler = {
 
 export function resolveOutboundDelayMs(value?: number): number {
   const delayMs = value ?? DEFAULT_OUTBOUND_DELAY_MS;
-  if (!Number.isSafeInteger(delayMs) || delayMs <= 0)
+  if (!Number.isSafeInteger(delayMs) || delayMs <= 0) {
     throw new Error("outboundDelayMs must be a positive integer");
+  }
   return delayMs;
 }
 
@@ -34,15 +35,18 @@ export class OutboundQueue {
     private readonly delayMs: number,
     private readonly scheduler: OutboundScheduler = systemScheduler,
     private readonly onError: (error: unknown) => void = (error) =>
-      console.error("Outbound IRC send failed", error),
+      console.error("Outbound IRC send failed", error)
   ) {
-    if (!Number.isSafeInteger(delayMs) || delayMs < 0)
+    if (!Number.isSafeInteger(delayMs) || delayMs < 0) {
       throw new Error("Outbound queue delay must be a non-negative integer");
+    }
   }
 
   enqueue(send: () => unknown): void {
     this.#pending.push(send);
-    if (this.#cooldown === undefined) this.#sendNext();
+    if (this.#cooldown === undefined) {
+      this.#sendNext();
+    }
   }
 
   clear(): void {
@@ -53,7 +57,9 @@ export class OutboundQueue {
 
   #sendNext(): void {
     const send = this.#pending.shift();
-    if (send === undefined) return;
+    if (send === undefined) {
+      return;
+    }
     this.#cooldown = this.scheduler.schedule(() => {
       this.#cooldown = undefined;
       this.#sendNext();
@@ -61,10 +67,9 @@ export class OutboundQueue {
     this.#cooldown.unref?.();
     try {
       const result = send();
-      if (isPromiseLike(result))
-        void Promise.resolve(result).catch((error: unknown) =>
-          this.onError(error),
-        );
+      if (isPromiseLike(result)) {
+        void Promise.resolve(result).catch((error: unknown) => this.onError(error));
+      }
     } catch (error) {
       this.onError(error);
     }

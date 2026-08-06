@@ -4,7 +4,7 @@ const MAX_ERROR_LENGTH = 200;
 
 export function runQuestionMaintenance(
   ageQuestions: () => void,
-  log: (message: string) => void = console.error,
+  log: (message: string) => void = console.error
 ): void {
   try {
     ageQuestions();
@@ -17,9 +17,7 @@ export function runQuestionMaintenance(
     }
     detail = sanitizeIrcText(detail);
     const concise =
-      detail.length > MAX_ERROR_LENGTH
-        ? `${detail.slice(0, MAX_ERROR_LENGTH - 3)}...`
-        : detail;
+      detail.length > MAX_ERROR_LENGTH ? `${detail.slice(0, MAX_ERROR_LENGTH - 3)}...` : detail;
     log(`Question maintenance failed: ${concise}`);
   }
 }
