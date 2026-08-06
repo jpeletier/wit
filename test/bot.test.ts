@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
-import { WitBot } from "../src/app/bot.js";
+import { WitBot, type BotOptions } from "../src/app/bot.js";
+import { DEFAULT_CHANNEL_LIFECYCLE } from "../src/config.js";
 import {
   DictionaryRepository,
   GameRepository,
@@ -21,11 +22,12 @@ test.after(() => {
         assert.doesNotMatch(entry.text, /[\r\n\0]/u);
 });
 
-function fixture(): {
+function fixture(options: Partial<BotOptions> = {}): {
   bot: WitBot;
   irc: FakeIrcPort;
   db: DatabaseSync;
   games: GameRepository;
+  clock: { now(): Date; advance(milliseconds: number): void };
 } {
   const db = new DatabaseSync(":memory:");
   db.exec(readFileSync(resolve("migrations/001_initial.sql"), "utf8"));
@@ -42,7 +44,13 @@ function fixture(): {
     INSERT INTO dictionary VALUES(3,'AAAA','aaaa','cuádruple a','OK');`);
   const irc = new FakeIrcPort();
   fakePorts.push(irc);
-  const clock = { now: () => new Date("2026-08-05T00:00:00Z") };
+  let now = new Date("2026-08-05T00:00:00Z").getTime();
+  const clock = {
+    now: () => new Date(now),
+    advance: (milliseconds: number) => {
+      now += milliseconds;
+    },
+  };
   const games = new GameRepository(db, clock);
   const bot = new WitBot(
     irc,
@@ -51,10 +59,323 @@ function fixture(): {
     new DictionaryRepository(db),
     clock,
     { next: () => 0 },
-    { networkId: 1, welcomeOnJoin: true },
+    {
+      networkId: 1,
+      welcomeOnJoin: true,
+      configuredChannels: [],
+      ...options,
+      channelLifecycle: {
+        ...DEFAULT_CHANNEL_LIFECYCLE,
+        ...options.channelLifecycle,
+      },
+    },
   );
-  return { bot, irc, db, games };
+  return { bot, irc, db, games, clock };
 }
+
+test("INVITE joins, greets the inviter and suppresses duplicate requests", () => {
+  const { bot, irc, db } = fixture();
+  const inviter = { identity: "inviter", nick: "Ana" };
+  bot.handle({ type: "invite", channel: "#invitado", user: inviter });
+  assert.deepEqual(irc.sent.at(-1), {
+    kind: "join",
+    target: "#invitado",
+    text: "",
+  });
+  bot.handle({ type: "invite", channel: "#INVITADO", user: inviter });
+  assert.ok(irc.sent.at(-1)?.text.includes("intentando entrar"));
+  irc.emit({
+    type: "join",
+    channel: "#invitado",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  assert.ok(
+    irc.sent.some(
+      (entry) =>
+        entry.kind === "message" &&
+        entry.target === "#invitado" &&
+        entry.text === "Hola, Ana me ha invitado aquí.",
+    ),
+  );
+  bot.handle({ type: "invite", channel: "#invitado", user: inviter });
+  assert.ok(irc.sent.at(-1)?.text.includes("Ya estoy"));
+  db.close();
+});
+
+test("silent channels are left after the configured message idle timeout", () => {
+  const { bot, irc, db, clock } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      messageIdleMinutes: 360,
+    },
+  });
+  irc.emit({
+    type: "join",
+    channel: "#silencio",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  clock.advance(360 * 60_000 - 1);
+  bot.tick();
+  assert.equal(
+    irc.sent.some((entry) => entry.kind === "part"),
+    false,
+  );
+  clock.advance(1);
+  bot.tick();
+  const part = irc.sent.find((entry) => entry.kind === "part");
+  assert.equal(part?.target, "#silencio");
+  assert.ok(part?.text.includes("360 minutos"));
+  bot.tick();
+  assert.equal(irc.sent.filter((entry) => entry.kind === "part").length, 1);
+  db.close();
+});
+
+test("active chat without a game is left after the configured game timeout", () => {
+  const { bot, irc, db, clock } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      messageIdleMinutes: 10_000,
+      gameIdleMinutes: 2_880,
+    },
+  });
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#charla",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  clock.advance(2_880 * 60_000);
+  bot.handle({ type: "message", channel: "#charla", user, text: "hola" });
+  bot.tick();
+  const part = irc.sent.find((entry) => entry.kind === "part");
+  assert.equal(part?.target, "#charla");
+  assert.ok(part?.text.includes("2880 minutos"));
+  db.close();
+});
+
+test("a successful game start resets the no-game channel timeout", () => {
+  const { bot, irc, db, clock } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      messageIdleMinutes: 10_000,
+      gameIdleMinutes: 2_880,
+    },
+  });
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#juego",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({ type: "message", channel: "#juego", user, text: "hola" });
+  clock.advance(2_000 * 60_000);
+  bot.handle({ type: "privateMessage", user, text: "TRIVIAL #juego 5" });
+  for (let round = 0; round < 5; round++) {
+    for (let tick = 0; tick < 6; tick++) bot.tick();
+    bot.handle({
+      type: "message",
+      channel: "#juego",
+      user,
+      text: "Respuesta",
+    });
+  }
+  bot.tick();
+  bot.tick();
+  clock.advance(1_000 * 60_000);
+  bot.tick();
+  assert.equal(
+    irc.sent.some((entry) => entry.kind === "part"),
+    false,
+  );
+  db.close();
+});
+
+test("INVITE never evicts a channel with an active game", () => {
+  const { bot, irc, db, clock } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      messageIdleMinutes: 10_000,
+      maxChannels: 1,
+      inviteEvictionIdleMinutes: 60,
+    },
+  });
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#jugando",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({ type: "privateMessage", user, text: "TRIVIAL #jugando 5" });
+  clock.advance(61 * 60_000);
+  bot.handle({ type: "invite", channel: "#nuevo", user });
+  assert.equal(
+    irc.sent.some((entry) => entry.kind === "part"),
+    false,
+  );
+  assert.equal(
+    irc.sent.some(
+      (entry) => entry.kind === "join" && entry.target === "#nuevo",
+    ),
+    false,
+  );
+  assert.ok(irc.sent.at(-1)?.text.includes("ninguno lleva 60 minutos"));
+  db.close();
+});
+
+test("channel activity survives a late CASEMAPPING change", () => {
+  const { bot, irc, db, clock } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      messageIdleMinutes: 60,
+      gameIdleMinutes: 10_000,
+    },
+  });
+  const user = { identity: "u", nick: "Ana" };
+  irc.caseMapping = "ascii";
+  irc.emit({
+    type: "join",
+    channel: "#Sala[",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  clock.advance(59 * 60_000);
+  irc.caseMapping = "rfc1459";
+  bot.handle({ type: "message", channel: "#sala{", user, text: "actividad" });
+  clock.advance(59 * 60_000);
+  bot.tick();
+  assert.equal(
+    irc.sent.some((entry) => entry.kind === "part"),
+    false,
+  );
+  db.close();
+});
+
+test("INVITE at capacity evicts the most idle eligible channel", () => {
+  const { bot, irc, db, clock } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      messageIdleMinutes: 10_000,
+      gameIdleMinutes: 10_000,
+      maxChannels: 2,
+      inviteEvictionIdleMinutes: 60,
+    },
+  });
+  const self = { identity: "bot", nick: "Wit" };
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({ type: "join", channel: "#viejo", user: self, self: true });
+  clock.advance(30 * 60_000);
+  irc.emit({ type: "join", channel: "#reciente", user: self, self: true });
+  bot.handle({
+    type: "message",
+    channel: "#reciente",
+    user,
+    text: "actividad",
+  });
+  clock.advance(31 * 60_000);
+  bot.handle({ type: "invite", channel: "#nuevo", user });
+  let commands = irc.sent.filter(
+    (entry) => entry.kind === "part" || entry.kind === "join",
+  );
+  assert.equal(commands.at(-1)?.kind, "part");
+  assert.equal(
+    commands.some(
+      (entry) => entry.kind === "join" && entry.target === "#nuevo",
+    ),
+    false,
+  );
+  irc.emit({ type: "part", channel: "#viejo", user: self, self: true });
+  commands = irc.sent.filter(
+    (entry) => entry.kind === "part" || entry.kind === "join",
+  );
+  assert.deepEqual(
+    commands.slice(-2).map((entry) => entry.kind),
+    ["part", "join"],
+  );
+  assert.equal(commands.at(-2)?.target, "#viejo");
+  assert.equal(commands.at(-1)?.target, "#nuevo");
+  db.close();
+});
+
+test("capacity replacement waits for server PART confirmation", () => {
+  const { bot, irc, db, clock } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      messageIdleMinutes: 10_000,
+      maxChannels: 1,
+      inviteEvictionIdleMinutes: 60,
+    },
+  });
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#viejo",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  clock.advance(60 * 60_000);
+  bot.handle({ type: "invite", channel: "#nuevo", user });
+  for (let tick = 0; tick < 10; tick++) bot.tick();
+  assert.equal(
+    irc.sent.some(
+      (entry) => entry.kind === "join" && entry.target === "#nuevo",
+    ),
+    false,
+  );
+  assert.equal(irc.sent.filter((entry) => entry.kind === "part").length, 1);
+  db.close();
+});
+
+test("INVITE at capacity refuses when no channel has been idle for an hour", () => {
+  const { bot, irc, db } = fixture({
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      maxChannels: 1,
+      inviteEvictionIdleMinutes: 60,
+    },
+  });
+  const user = { identity: "u", nick: "Ana" };
+  irc.emit({
+    type: "join",
+    channel: "#ocupado",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  bot.handle({ type: "invite", channel: "#nuevo", user });
+  assert.equal(
+    irc.sent.some(
+      (entry) => entry.kind === "join" && entry.target === "#nuevo",
+    ),
+    false,
+  );
+  assert.ok(irc.sent.at(-1)?.text.includes("ninguno lleva 60 minutos"));
+  db.close();
+});
+
+test("pending configured joins reserve channel capacity", () => {
+  const { bot, irc, db } = fixture({
+    configuredChannels: ["#configurado"],
+    channelLifecycle: {
+      ...DEFAULT_CHANNEL_LIFECYCLE,
+      maxChannels: 1,
+    },
+  });
+  const user = { identity: "u", nick: "Ana" };
+  bot.handle({ type: "registered" });
+  bot.handle({ type: "invite", channel: "#nuevo", user });
+  assert.equal(
+    irc.sent.some(
+      (entry) => entry.kind === "join" && entry.target === "#nuevo",
+    ),
+    false,
+  );
+  assert.ok(irc.sent.at(-1)?.text.includes("ya estoy en 1 canales"));
+  db.close();
+});
 
 test("commands report busy channels, authorize stop, welcome every join and force calculator display", () => {
   const { bot, irc, db } = fixture();

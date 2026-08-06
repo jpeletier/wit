@@ -109,6 +109,12 @@ export class IrcClientAdapter implements IrcPort {
   join(channel: string): void {
     this.#client.join(channel);
   }
+  part(channel: string, reason?: string): void {
+    this.#client.part(
+      channel,
+      reason === undefined ? undefined : sanitizeIrcText(reason),
+    );
+  }
   say(target: string, text: string): void {
     const safeText = sanitizeIrcText(text);
     this.#outbound.enqueue(() => this.#client.privmsg(target, safeText));
@@ -162,6 +168,14 @@ export class IrcClientAdapter implements IrcPort {
         text: message.params.text,
       }),
     );
+    this.#client.on("invite", (message) => {
+      if (!this.#sameNick(message.params.nick, this.nick)) return;
+      this.#emit({
+        type: "invite",
+        channel: message.params.channel,
+        user: this.#user(message.source),
+      });
+    });
     this.#client.on("join", (message) => {
       const user = this.#user(message.source);
       const self = this.#sameNick(user.nick, this.nick);

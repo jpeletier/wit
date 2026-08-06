@@ -3,6 +3,7 @@ import { mirc } from "../core/format.js";
 import type { Clock, RandomSource } from "../core/ports.js";
 import { ircCasefold } from "../core/text.js";
 import { formatMadridDisplayDateTime } from "../core/time.js";
+import type { ChannelLifecycleConfig } from "../config.js";
 import type {
   DictionaryRepository,
   GameRepository,
@@ -49,7 +50,26 @@ type Session = TriviaSession | CylSession;
 export interface BotOptions {
   networkId: number;
   welcomeOnJoin: boolean;
+  configuredChannels: readonly string[];
+  channelLifecycle: Readonly<ChannelLifecycleConfig>;
 }
+
+interface ChannelActivity {
+  channel: string;
+  joinedAt: number;
+  lastMessageAt: number;
+  receivedMessage: boolean;
+  lastGameStartedAt: number | undefined;
+  parting: boolean;
+}
+
+interface PendingJoin {
+  channel: string;
+  requestedAt: number;
+  invitedBy: IrcUser | undefined;
+}
+
+const MINUTE_MS = 60_000;
 
 const HELP = [
   "Wit IRC Bot, por Javier Peletier Ribera.",
@@ -65,6 +85,9 @@ const HELP = [
 
 export class WitBot {
   readonly #sessions = new Map<string, Session>();
+  readonly #channelActivity = new Map<string, ChannelActivity>();
+  readonly #pendingJoins = new Map<string, PendingJoin>();
+  readonly #replacementJoins = new Map<string, PendingJoin>();
   readonly #unsubscribe: () => void;
   #timer: NodeJS.Timeout | undefined;
   #stopped = false;
@@ -115,10 +138,15 @@ export class WitBot {
         this.#private(event.user, event.text);
         break;
       case "message":
+        this.#recordMessage(event.channel, event.user);
         this.#channel(event.channel, event.user, event.text);
         break;
+      case "invite":
+        this.#invite(event.channel, event.user);
+        break;
       case "join":
-        if (!event.self && this.options.welcomeOnJoin)
+        if (event.self) this.#recordJoin(event.channel);
+        else if (this.options.welcomeOnJoin)
           this.irc.notice(
             event.user.nick,
             `Bienvenido a ${event.channel}. Para obtener ayuda, escribe /msg ${this.irc.nick} HELP`,
@@ -128,14 +156,17 @@ export class WitBot {
         this.#rename(event.user);
         break;
       case "part":
-        if (event.self)
+        if (event.self) {
+          this.#recordDeparture(event.channel);
           this.#end(
             event.channel,
             "La partida terminó porque el bot salió del canal",
           );
+        }
         break;
       case "kick":
         if (event.self) {
+          this.#recordDeparture(event.channel);
           if (this.#sessions.get(this.#key(event.channel))?.type === "trivia")
             this.irc.notice(
               event.user.nick,
@@ -148,12 +179,18 @@ export class WitBot {
         }
         break;
       case "disconnected":
+        this.#channelActivity.clear();
+        this.#pendingJoins.clear();
+        this.#replacementJoins.clear();
         this.#endAll("La partida terminó porque el bot se desconectó");
         break;
       case "caseMapping":
         this.#rekeySessions();
+        this.#rekeyChannels();
         break;
       case "registered":
+        this.#recordConfiguredJoins();
+        break;
       case "membership":
         break;
     }
@@ -169,6 +206,7 @@ export class WitBot {
         this.#fail(session.channel, error);
       }
     }
+    this.#maintainChannels();
   }
 
   #private(user: IrcUser, text: string): void {
@@ -303,6 +341,7 @@ export class WitBot {
         `La puntuación máxima por respuesta es de${mirc.color(` ${triviaPoints(5, context.multiplier)}`, 4)} puntos.`,
       );
       this.irc.say(channel, mirc.reset);
+      this.#recordGameStart(channel);
     } catch (error) {
       this.#end(channel);
       throw error;
@@ -340,6 +379,7 @@ export class WitBot {
         channel,
         `\u00038,1 wIt C&L \u0003 Comienza una nueva partida de C&L iniciada por ${mirc.color(user.nick, 4)}`,
       );
+      this.#recordGameStart(channel);
     } catch (error) {
       this.#end(channel);
       throw error;
@@ -719,6 +759,235 @@ export class WitBot {
         );
     }
   }
+  #recordConfiguredJoins(): void {
+    const now = this.clock.now().getTime();
+    for (const channel of this.options.configuredChannels) {
+      const key = this.#key(channel);
+      if (!this.irc.isJoined(channel) && !this.#pendingJoins.has(key))
+        this.#pendingJoins.set(key, {
+          channel,
+          requestedAt: now,
+          invitedBy: undefined,
+        });
+    }
+  }
+  #recordJoin(channel: string): void {
+    const now = this.clock.now().getTime();
+    const key = this.#key(channel);
+    const pending = this.#pendingJoins.get(key);
+    this.#pendingJoins.delete(key);
+    const existing = this.#channelActivity.get(key);
+    if (existing === undefined)
+      this.#channelActivity.set(key, {
+        channel,
+        joinedAt: now,
+        lastMessageAt: now,
+        receivedMessage: false,
+        lastGameStartedAt: undefined,
+        parting: false,
+      });
+    else {
+      existing.channel = channel;
+      existing.parting = false;
+    }
+    if (pending?.invitedBy !== undefined) {
+      this.irc.say(
+        channel,
+        `Hola, ${pending.invitedBy.nick} me ha invitado aquí.`,
+      );
+      this.irc.say(
+        channel,
+        `Para organizar una partida, dime en privado: TRIVIAL ${channel} o CYL ${channel}`,
+      );
+    }
+  }
+  #recordMessage(channel: string, user: IrcUser): void {
+    if (this.#sameNick(user.nick, this.irc.nick)) return;
+    const activity = this.#channelActivity.get(this.#key(channel));
+    if (activity === undefined) return;
+    activity.lastMessageAt = this.clock.now().getTime();
+    activity.receivedMessage = true;
+  }
+  #recordGameStart(channel: string): void {
+    const activity = this.#channelActivity.get(this.#key(channel));
+    if (activity !== undefined)
+      activity.lastGameStartedAt = this.clock.now().getTime();
+  }
+  #forgetChannel(channel: string): void {
+    const key = this.#key(channel);
+    this.#channelActivity.delete(key);
+    this.#pendingJoins.delete(key);
+  }
+  #recordDeparture(channel: string): void {
+    const key = this.#key(channel);
+    const replacement = this.#replacementJoins.get(key);
+    this.#replacementJoins.delete(key);
+    this.#forgetChannel(channel);
+    if (replacement !== undefined) this.#requestJoin(replacement);
+  }
+  #invite(channel: string, user: IrcUser): void {
+    const key = this.#key(channel);
+    if (this.irc.isJoined(channel) || this.#channelActivity.has(key)) {
+      this.irc.notice(user.nick, `Ya estoy en ${channel}.`);
+      return;
+    }
+    if (
+      this.#pendingJoins.has(key) ||
+      [...this.#replacementJoins.values()].some(
+        (replacement) => this.#key(replacement.channel) === key,
+      )
+    ) {
+      this.irc.notice(user.nick, `Ya estoy intentando entrar en ${channel}.`);
+      return;
+    }
+    const occupied = new Set([
+      ...this.irc.joinedChannels.map((joined) => this.#key(joined)),
+      ...this.#pendingJoins.keys(),
+      ...[...this.#replacementJoins.values()].map((replacement) =>
+        this.#key(replacement.channel),
+      ),
+    ]).size;
+    if (occupied >= this.options.channelLifecycle.maxChannels) {
+      const now = this.clock.now().getTime();
+      const minimumIdle =
+        this.options.channelLifecycle.inviteEvictionIdleMinutes * MINUTE_MS;
+      const candidate = [...this.#channelActivity.values()]
+        .filter(
+          (activity) =>
+            !activity.parting &&
+            !this.#sessions.has(this.#key(activity.channel)) &&
+            now - activity.lastMessageAt >= minimumIdle,
+        )
+        .sort(
+          (left, right) =>
+            left.lastMessageAt - right.lastMessageAt ||
+            left.joinedAt - right.joinedAt ||
+            this.#key(left.channel).localeCompare(this.#key(right.channel)),
+        )[0];
+      if (candidate === undefined) {
+        this.irc.notice(
+          user.nick,
+          `No puedo entrar en ${channel}: ya estoy en ${this.options.channelLifecycle.maxChannels} canales y ninguno lleva ${this.options.channelLifecycle.inviteEvictionIdleMinutes} minutos inactivo.`,
+        );
+        return;
+      }
+      candidate.parting = true;
+      const replacement: PendingJoin = {
+        channel,
+        requestedAt: this.clock.now().getTime(),
+        invitedBy: user,
+      };
+      const candidateKey = this.#key(candidate.channel);
+      this.#replacementJoins.set(candidateKey, replacement);
+      try {
+        this.irc.part(
+          candidate.channel,
+          `Dejo sitio para ${channel}; este canal lleva demasiado tiempo inactivo`,
+        );
+      } catch {
+        candidate.parting = false;
+        this.#replacementJoins.delete(candidateKey);
+        this.irc.notice(
+          user.nick,
+          `No pude liberar un canal para entrar en ${channel}.`,
+        );
+        return;
+      }
+      return;
+    }
+    this.#requestJoin({
+      channel,
+      requestedAt: this.clock.now().getTime(),
+      invitedBy: user,
+    });
+  }
+  #requestJoin(pending: PendingJoin): void {
+    const key = this.#key(pending.channel);
+    pending.requestedAt = this.clock.now().getTime();
+    this.#pendingJoins.set(key, pending);
+    try {
+      this.irc.join(pending.channel);
+    } catch {
+      this.#pendingJoins.delete(key);
+      if (pending.invitedBy !== undefined)
+        this.irc.notice(
+          pending.invitedBy.nick,
+          `No pude entrar en ${pending.channel}.`,
+        );
+    }
+  }
+  #maintainChannels(): void {
+    const now = this.clock.now().getTime();
+    const messageIdle =
+      this.options.channelLifecycle.messageIdleMinutes * MINUTE_MS;
+    const gameIdle = this.options.channelLifecycle.gameIdleMinutes * MINUTE_MS;
+    for (const activity of this.#channelActivity.values()) {
+      if (activity.parting || this.#sessions.has(this.#key(activity.channel)))
+        continue;
+      const silent = now - activity.lastMessageAt >= messageIdle;
+      const gameReference = activity.lastGameStartedAt ?? activity.joinedAt;
+      const noRecentGame =
+        activity.receivedMessage && now - gameReference >= gameIdle;
+      if (!silent && !noRecentGame) continue;
+      activity.parting = true;
+      const reason = silent
+        ? `Canal inactivo durante ${this.options.channelLifecycle.messageIdleMinutes} minutos`
+        : `No se ha iniciado ninguna partida durante ${this.options.channelLifecycle.gameIdleMinutes} minutos`;
+      try {
+        this.irc.part(activity.channel, reason);
+      } catch (error) {
+        activity.parting = false;
+        console.error(
+          `IRC ${this.irc.nick} could not leave ${activity.channel}`,
+          error,
+        );
+      }
+    }
+  }
+  #rekeyChannels(): void {
+    const previousActivities = new Map(this.#channelActivity);
+    const activities = [...this.#channelActivity.values()];
+    this.#channelActivity.clear();
+    for (const activity of activities) {
+      const key = this.#key(activity.channel);
+      const existing = this.#channelActivity.get(key);
+      if (existing === undefined) this.#channelActivity.set(key, activity);
+      else {
+        existing.joinedAt = Math.min(existing.joinedAt, activity.joinedAt);
+        existing.lastMessageAt = Math.max(
+          existing.lastMessageAt,
+          activity.lastMessageAt,
+        );
+        existing.receivedMessage ||= activity.receivedMessage;
+        existing.lastGameStartedAt = latestTime(
+          existing.lastGameStartedAt,
+          activity.lastGameStartedAt,
+        );
+        existing.parting ||= activity.parting;
+      }
+    }
+    const pending = [...this.#pendingJoins.values()];
+    this.#pendingJoins.clear();
+    for (const request of pending) {
+      const key = this.#key(request.channel);
+      const existing = this.#pendingJoins.get(key);
+      if (existing === undefined || request.requestedAt < existing.requestedAt)
+        this.#pendingJoins.set(key, request);
+    }
+    const replacements = [...this.#replacementJoins.entries()];
+    this.#replacementJoins.clear();
+    for (const [departingKey, request] of replacements) {
+      const rekeyedDeparting = this.#key(
+        previousActivities.get(departingKey)?.channel ?? departingKey,
+      );
+      const existing = this.#replacementJoins.get(rekeyedDeparting);
+      if (existing === undefined || request.requestedAt < existing.requestedAt)
+        this.#replacementJoins.set(rekeyedDeparting, request);
+    }
+  }
+  #sameNick(left: string, right: string): boolean {
+    return this.#key(left) === this.#key(right);
+  }
   #fail(channel: string, error: unknown): void {
     try {
       this.irc.say(
@@ -747,4 +1016,13 @@ function cylHeader(): string {
 }
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function latestTime(
+  left: number | undefined,
+  right: number | undefined,
+): number | undefined {
+  if (left === undefined) return right;
+  if (right === undefined) return left;
+  return Math.max(left, right);
 }

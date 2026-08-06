@@ -9,6 +9,12 @@
       "tls": true,
       "networkId": 1,
       "outboundDelayMs": 2000,
+      "channelLifecycle": {
+        "messageIdleMinutes": 360,
+        "gameIdleMinutes": 2880,
+        "maxChannels": 15,
+        "inviteEvictionIdleMinutes": 60
+      },
       "channels": ["#trivia", "#numbers"]
     }
   ]

@@ -46,6 +46,21 @@ test("fake adapter tracks self join, part, kick and disconnect", () => {
   assert.deepEqual(irc.joinedChannels, []);
 });
 
+test("fake adapter records PART without changing membership before server confirmation", () => {
+  const irc = new FakeIrcPort();
+  const self = { identity: "bot", nick: "Wit" };
+  irc.emit({ type: "join", channel: "#One", user: self, self: true });
+  irc.part("#one", "idle");
+  assert.equal(irc.isJoined("#one"), true);
+  assert.deepEqual(irc.sent.at(-1), {
+    kind: "part",
+    target: "#one",
+    text: "idle",
+  });
+  irc.emit({ type: "part", channel: "#One", user: self, self: true });
+  assert.equal(irc.isJoined("#one"), false);
+});
+
 test("identity tracker is stable for one mask and replaces a missed recycled nick", () => {
   const tracker = new IrcIdentityTracker((nick) => nick.toLowerCase());
   const firstMask = { user: "first", host: "bouncer.example" };

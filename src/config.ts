@@ -13,11 +13,35 @@ const BOT_KEYS = [
   "networkId",
   "channels",
   "outboundDelayMs",
+  "channelLifecycle",
 ] as const;
 const ACCOUNT_AUTH_KEYS = ["method", "username", "password"] as const;
 const SERVICE_AUTH_KEYS = ["target", "command", "account", "password"] as const;
+const CHANNEL_LIFECYCLE_KEYS = [
+  "messageIdleMinutes",
+  "gameIdleMinutes",
+  "maxChannels",
+  "inviteEvictionIdleMinutes",
+] as const;
 export const MAX_CHANNEL_LENGTH = 50;
 export const MAX_OUTBOUND_DELAY_MS = 300_000;
+export const MAX_CHANNEL_LIFECYCLE_MINUTES = 5_256_000;
+export const MAX_JOINED_CHANNELS = 100;
+
+export interface ChannelLifecycleConfig {
+  messageIdleMinutes: number;
+  gameIdleMinutes: number;
+  maxChannels: number;
+  inviteEvictionIdleMinutes: number;
+}
+
+export const DEFAULT_CHANNEL_LIFECYCLE: Readonly<ChannelLifecycleConfig> =
+  Object.freeze({
+    messageIdleMinutes: 6 * 60,
+    gameIdleMinutes: 48 * 60,
+    maxChannels: 15,
+    inviteEvictionIdleMinutes: 60,
+  });
 
 export interface BotConfig {
   nick: string;
@@ -30,6 +54,7 @@ export interface BotConfig {
   networkId: number;
   channels: string[];
   outboundDelayMs?: number;
+  channelLifecycle: ChannelLifecycleConfig;
 }
 export interface Config {
   database: string;
@@ -129,6 +154,14 @@ function validateBot(raw: unknown, index: number): BotConfig {
   if (!integerInRange(value.networkId, 1, Number.MAX_SAFE_INTEGER))
     throw new Error(`${path}.networkId must be a positive safe integer`);
   const channels = validateChannels(value.channels, path);
+  const channelLifecycle = validateChannelLifecycle(
+    value.channelLifecycle,
+    path,
+  );
+  if (channels.length > channelLifecycle.maxChannels)
+    throw new Error(
+      `${path}.channels cannot exceed channelLifecycle.maxChannels`,
+    );
   if (
     value.outboundDelayMs !== undefined &&
     !integerInRange(value.outboundDelayMs, 1, MAX_OUTBOUND_DELAY_MS)
@@ -149,12 +182,51 @@ function validateBot(raw: unknown, index: number): BotConfig {
     tls: value.tls ?? true,
     networkId: value.networkId,
     channels,
+    channelLifecycle,
     ...(typeof value.outboundDelayMs === "number"
       ? { outboundDelayMs: value.outboundDelayMs }
       : {}),
     ...(serverPassword === undefined ? {} : { serverPassword }),
     ...(accountAuth === undefined ? {} : { accountAuth }),
     ...(serviceAuth === undefined ? {} : { serviceAuth }),
+  });
+}
+
+function validateChannelLifecycle(
+  raw: unknown,
+  botPath: string,
+): ChannelLifecycleConfig {
+  if (raw === undefined) return DEFAULT_CHANNEL_LIFECYCLE;
+  const path = `${botPath}.channelLifecycle`;
+  const value = objectValue(raw, path);
+  rejectUnknownKeys(value, CHANNEL_LIFECYCLE_KEYS, path);
+  const messageIdleMinutes =
+    value.messageIdleMinutes ?? DEFAULT_CHANNEL_LIFECYCLE.messageIdleMinutes;
+  const gameIdleMinutes =
+    value.gameIdleMinutes ?? DEFAULT_CHANNEL_LIFECYCLE.gameIdleMinutes;
+  const inviteEvictionIdleMinutes =
+    value.inviteEvictionIdleMinutes ??
+    DEFAULT_CHANNEL_LIFECYCLE.inviteEvictionIdleMinutes;
+  const maxChannels =
+    value.maxChannels ?? DEFAULT_CHANNEL_LIFECYCLE.maxChannels;
+  for (const [field, setting] of [
+    ["messageIdleMinutes", messageIdleMinutes],
+    ["gameIdleMinutes", gameIdleMinutes],
+    ["inviteEvictionIdleMinutes", inviteEvictionIdleMinutes],
+  ] as const)
+    if (!integerInRange(setting, 1, MAX_CHANNEL_LIFECYCLE_MINUTES))
+      throw new Error(
+        `${path}.${field} must be a positive integer no greater than ${MAX_CHANNEL_LIFECYCLE_MINUTES}`,
+      );
+  if (!integerInRange(maxChannels, 1, MAX_JOINED_CHANNELS))
+    throw new Error(
+      `${path}.maxChannels must be an integer from 1 to ${MAX_JOINED_CHANNELS}`,
+    );
+  return Object.freeze({
+    messageIdleMinutes: messageIdleMinutes as number,
+    gameIdleMinutes: gameIdleMinutes as number,
+    maxChannels,
+    inviteEvictionIdleMinutes: inviteEvictionIdleMinutes as number,
   });
 }
 

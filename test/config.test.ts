@@ -4,8 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  DEFAULT_CHANNEL_LIFECYCLE,
   loadConfig,
   MAX_CHANNEL_LENGTH,
+  MAX_CHANNEL_LIFECYCLE_MINUTES,
+  MAX_JOINED_CHANNELS,
   MAX_OUTBOUND_DELAY_MS,
   parseConfig,
   selectDatabasePath,
@@ -39,10 +42,12 @@ test("config parses and freezes minimal normalized output", () => {
   assert.equal(parsed.welcomeOnJoin, true);
   assert.equal(parsed.bots[0]?.tls, true);
   assert.deepEqual(parsed.bots[0]?.channels, ["#trivia"]);
+  assert.deepEqual(parsed.bots[0]?.channelLifecycle, DEFAULT_CHANNEL_LIFECYCLE);
   assert.equal(Object.isFrozen(parsed), true);
   assert.equal(Object.isFrozen(parsed.bots), true);
   assert.equal(Object.isFrozen(parsed.bots[0]), true);
   assert.equal(Object.isFrozen(parsed.bots[0]?.channels), true);
+  assert.equal(Object.isFrozen(parsed.bots[0]?.channelLifecycle), true);
   (raw.bots as Array<Record<string, unknown>>)[0]!.channels = ["#changed"];
   assert.deepEqual(parsed.bots[0]?.channels, ["#trivia"]);
   assert.throws(() => {
@@ -74,6 +79,12 @@ test("config accepts all documented fields and protocol boundaries", () => {
           account: "wit-account",
           password: "service-secret",
         },
+        channelLifecycle: {
+          messageIdleMinutes: 120,
+          gameIdleMinutes: 240,
+          maxChannels: 4,
+          inviteEvictionIdleMinutes: 30,
+        },
       },
       { welcomeOnJoin: false },
     ),
@@ -84,6 +95,12 @@ test("config accepts all documented fields and protocol boundaries", () => {
   assert.equal(parsed.bots[0]?.outboundDelayMs, MAX_OUTBOUND_DELAY_MS);
   assert.equal(Object.isFrozen(parsed.bots[0]?.accountAuth), true);
   assert.equal(Object.isFrozen(parsed.bots[0]?.serviceAuth), true);
+  assert.deepEqual(parsed.bots[0]?.channelLifecycle, {
+    messageIdleMinutes: 120,
+    gameIdleMinutes: 240,
+    maxChannels: 4,
+    inviteEvictionIdleMinutes: 30,
+  });
 });
 
 test("config rejects unknown keys with paths", () => {
@@ -107,6 +124,10 @@ test("config rejects unknown keys with paths", () => {
         serviceAuth: { target: "AuthServ", password: "secret", extra: true },
       }),
       /serviceAuth\.extra/u,
+    ],
+    [
+      config({ channelLifecycle: { unknown: 1 } }),
+      /channelLifecycle\.unknown/u,
     ],
   ];
   for (const [raw, pattern] of cases)
@@ -169,6 +190,43 @@ test("config rejects invalid root and bot field boundaries", () => {
       /outboundDelayMs/u,
     ],
     ["delay fraction", config({ outboundDelayMs: 1.5 }), /outboundDelayMs/u],
+    [
+      "message idle zero",
+      config({ channelLifecycle: { messageIdleMinutes: 0 } }),
+      /messageIdleMinutes/u,
+    ],
+    [
+      "game idle high",
+      config({
+        channelLifecycle: {
+          gameIdleMinutes: MAX_CHANNEL_LIFECYCLE_MINUTES + 1,
+        },
+      }),
+      /gameIdleMinutes/u,
+    ],
+    [
+      "eviction idle fraction",
+      config({ channelLifecycle: { inviteEvictionIdleMinutes: 1.5 } }),
+      /inviteEvictionIdleMinutes/u,
+    ],
+    [
+      "max channels zero",
+      config({ channelLifecycle: { maxChannels: 0 } }),
+      /maxChannels/u,
+    ],
+    [
+      "max channels high",
+      config({ channelLifecycle: { maxChannels: MAX_JOINED_CHANNELS + 1 } }),
+      /maxChannels/u,
+    ],
+    [
+      "configured channels exceed maximum",
+      config({
+        channels: ["#one", "#two"],
+        channelLifecycle: { maxChannels: 1 },
+      }),
+      /channels cannot exceed channelLifecycle\.maxChannels/u,
+    ],
   ];
   for (const [name, raw, pattern] of cases)
     assert.throws(() => parseConfig(raw), pattern, name);

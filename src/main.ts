@@ -27,7 +27,12 @@ const bots = config.bots.map((botConfig) => {
     dictionary,
     systemClock,
     systemRandom,
-    { networkId: botConfig.networkId, welcomeOnJoin: config.welcomeOnJoin },
+    {
+      networkId: botConfig.networkId,
+      welcomeOnJoin: config.welcomeOnJoin,
+      configuredChannels: botConfig.channels,
+      channelLifecycle: botConfig.channelLifecycle,
+    },
   );
   return bot;
 });

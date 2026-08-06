@@ -85,6 +85,7 @@ export type IrcEvent =
   | { type: "caseMapping"; caseMapping: IrcCaseMapping }
   | { type: "message"; channel: string; user: IrcUser; text: string }
   | { type: "privateMessage"; user: IrcUser; text: string }
+  | { type: "invite"; channel: string; user: IrcUser }
   | { type: "join"; channel: string; user: IrcUser; self: boolean }
   | { type: "part"; channel: string; user: IrcUser; self: boolean }
   | {
@@ -296,6 +297,7 @@ export interface IrcPort {
   connect(): Promise<void>;
   disconnect(reason?: string): void;
   join(channel: string): void;
+  part(channel: string, reason?: string): void;
   say(target: string, text: string): void;
   notice(target: string, text: string): void;
   isJoined(channel: string): boolean;
@@ -305,7 +307,7 @@ export interface IrcPort {
 
 export class FakeIrcPort implements IrcPort {
   readonly sent: Array<{
-    kind: "message" | "notice" | "join";
+    kind: "message" | "notice" | "join" | "part";
     target: string;
     text: string;
   }> = [];
@@ -339,6 +341,9 @@ export class FakeIrcPort implements IrcPort {
   }
   join(channel: string): void {
     this.sent.push({ kind: "join", target: channel, text: "" });
+  }
+  part(channel: string, reason = ""): void {
+    this.sent.push({ kind: "part", target: channel, text: reason });
   }
   say(target: string, text: string): void {
     this.sent.push({ kind: "message", target, text: sanitizeIrcText(text) });
