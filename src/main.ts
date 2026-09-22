@@ -6,6 +6,9 @@ import { openDatabase } from "./db/database.js";
 import { DictionaryRepository, GameRepository, QuestionRepository } from "./db/repositories.js";
 import { loadConfig, selectDatabasePath } from "./config.js";
 import { IrcClientAdapter } from "./irc/client-adapter.js";
+import { enableTlsServerName } from "./irc/tls-sni.js";
+
+enableTlsServerName();
 
 const config = loadConfig(resolve(process.env.WIT_CONFIG ?? "config.json"));
 const database = openDatabase(
