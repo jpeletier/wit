@@ -7,6 +7,8 @@ const BOT_KEYS = [
   "server",
   "port",
   "tls",
+  "ident",
+  "realname",
   "serverPassword",
   "accountAuth",
   "serviceAuth",
@@ -42,11 +44,17 @@ export const DEFAULT_CHANNEL_LIFECYCLE: Readonly<ChannelLifecycleConfig> = Objec
   inviteEvictionIdleMinutes: 60,
 });
 
+export const DEFAULT_IDENT = "jirc";
+export const DEFAULT_REALNAME = "jIRC ActiveX DLL by J. Peletier, www.peletier.com";
+export const MAX_REALNAME_BYTES = 128;
+
 export interface BotConfig {
   nick: string;
   server: string;
   port: number;
   tls: boolean;
+  ident: string;
+  realname: string;
   serverPassword?: string;
   accountAuth?: AccountAuth;
   serviceAuth?: ServiceAuth;
@@ -156,6 +164,8 @@ function validateBot(raw: unknown, index: number): BotConfig {
   if (value.tls !== undefined && typeof value.tls !== "boolean") {
     throw new Error(`${path}.tls must be a boolean`);
   }
+  const ident = validateIdent(value.ident, path);
+  const realname = validateRealname(value.realname, path);
   if (!integerInRange(value.networkId, 1, Number.MAX_SAFE_INTEGER)) {
     throw new Error(`${path}.networkId must be a positive safe integer`);
   }
@@ -180,6 +190,8 @@ function validateBot(raw: unknown, index: number): BotConfig {
     server: value.server,
     port: value.port,
     tls: value.tls ?? true,
+    ident,
+    realname,
     networkId: value.networkId,
     channels,
     channelLifecycle,
@@ -254,6 +266,35 @@ function validateChannels(raw: unknown, botPath: string): string[] {
     channels.push(channel);
   }
   return Object.freeze(channels) as string[];
+}
+
+function validateIdent(raw: unknown, botPath: string): string {
+  if (raw === undefined) {
+    return DEFAULT_IDENT;
+  }
+  const path = `${botPath}.ident`;
+  if (typeof raw !== "string" || !/^[a-z0-9_-]+$/iu.test(raw) || raw.length > 20) {
+    throw new Error(`${path} must be 1-20 characters of letters, digits, "-" or "_"`);
+  }
+  return raw;
+}
+
+function validateRealname(raw: unknown, botPath: string): string {
+  if (raw === undefined) {
+    return DEFAULT_REALNAME;
+  }
+  const path = `${botPath}.realname`;
+  if (
+    typeof raw !== "string" ||
+    raw === "" ||
+    new TextEncoder().encode(raw).length > MAX_REALNAME_BYTES ||
+    /[\0\r\n]/u.test(raw)
+  ) {
+    throw new Error(
+      `${path} must be 1-${MAX_REALNAME_BYTES} UTF-8 bytes without NUL or line breaks`
+    );
+  }
+  return raw;
 }
 
 function validateAccountAuth(raw: unknown, botPath: string): AccountAuth | undefined {

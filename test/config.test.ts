@@ -10,6 +10,7 @@ import {
   MAX_CHANNEL_LIFECYCLE_MINUTES,
   MAX_JOINED_CHANNELS,
   MAX_OUTBOUND_DELAY_MS,
+  MAX_REALNAME_BYTES,
   parseConfig,
   selectDatabasePath,
 } from "../src/config.js";
@@ -41,6 +42,8 @@ test("config parses and freezes minimal normalized output", () => {
   const parsed = parseConfig(raw);
   assert.equal(parsed.welcomeOnJoin, true);
   assert.equal(parsed.bots[0]?.tls, true);
+  assert.equal(parsed.bots[0]?.ident, "jirc");
+  assert.equal(parsed.bots[0]?.realname, "jIRC ActiveX DLL by J. Peletier, www.peletier.com");
   assert.deepEqual(parsed.bots[0]?.channels, ["#trivia"]);
   assert.deepEqual(parsed.bots[0]?.channelLifecycle, DEFAULT_CHANNEL_LIFECYCLE);
   assert.equal(Object.isFrozen(parsed), true);
@@ -64,6 +67,8 @@ test("config accepts all documented fields and protocol boundaries", () => {
         server: "2001:db8::1",
         port: 65_535,
         tls: false,
+        ident: "wit-bot",
+        realname: "Wit trivia bot",
         networkId: Number.MAX_SAFE_INTEGER,
         channels: [longestChannel, "&local", "+modeless", "!safe"],
         outboundDelayMs: MAX_OUTBOUND_DELAY_MS,
@@ -92,6 +97,8 @@ test("config accepts all documented fields and protocol boundaries", () => {
   assert.equal(parsed.welcomeOnJoin, false);
   assert.equal(parsed.bots[0]?.tls, false);
   assert.equal(parsed.bots[0]?.port, 65_535);
+  assert.equal(parsed.bots[0]?.ident, "wit-bot");
+  assert.equal(parsed.bots[0]?.realname, "Wit trivia bot");
   assert.equal(parsed.bots[0]?.outboundDelayMs, MAX_OUTBOUND_DELAY_MS);
   assert.equal(Object.isFrozen(parsed.bots[0]?.accountAuth), true);
   assert.equal(Object.isFrozen(parsed.bots[0]?.serviceAuth), true);
@@ -153,6 +160,13 @@ test("config rejects invalid root and bot field boundaries", () => {
     ["port high", config({ port: 65_536 }), /\.port/u],
     ["port fraction", config({ port: 1.5 }), /\.port/u],
     ["tls", config({ tls: "true" }), /\.tls/u],
+    ["ident empty", config({ ident: "" }), /\.ident/u],
+    ["ident space", config({ ident: "bad ident" }), /\.ident/u],
+    ["ident long", config({ ident: "a".repeat(21) }), /\.ident/u],
+    ["ident type", config({ ident: 42 }), /\.ident/u],
+    ["realname empty", config({ realname: "" }), /\.realname/u],
+    ["realname newline", config({ realname: "Bad\nName" }), /\.realname/u],
+    ["realname long", config({ realname: "a".repeat(MAX_REALNAME_BYTES + 1) }), /\.realname/u],
     ["network zero", config({ networkId: 0 }), /\.networkId/u],
     ["network fraction", config({ networkId: 1.5 }), /\.networkId/u],
     ["network unsafe", config({ networkId: Number.MAX_SAFE_INTEGER + 1 }), /\.networkId/u],

@@ -16,6 +16,8 @@ export interface ServiceAuth {
 
 export interface ClientOptionConfig {
   nick: string;
+  username?: string;
+  realname?: string;
   serverPassword?: string;
   accountAuth?: AccountAuth;
 }
@@ -39,6 +41,8 @@ export function buildClientOptions(config: ClientOptionConfig): ClientOptions {
     bot: true,
     reconnect: false,
     ctcpReplies: { version: "Wit TypeScript" },
+    ...(config.username === undefined ? {} : { username: config.username }),
+    ...(config.realname === undefined ? {} : { realname: config.realname }),
     ...(config.serverPassword === undefined ? {} : { serverPassword: config.serverPassword }),
     ...accountOptions,
   };

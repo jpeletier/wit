@@ -2,11 +2,27 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildClientOptions, buildServiceAuthCommand } from "../src/irc/auth.js";
 
-test("client options map server PASS and SASL PLAIN without inferred NickServ", () => {
+test("client options map ident, realname, server PASS and SASL PLAIN without inferred NickServ", () => {
   assert.deepEqual(
     buildClientOptions({
       nick: "Wit",
+      username: "jirc",
+      realname: "jIRC ActiveX DLL by J. Peletier, www.peletier.com",
       serverPassword: "server secret",
+    }),
+    {
+      nick: "Wit",
+      bot: true,
+      reconnect: false,
+      ctcpReplies: { version: "Wit TypeScript" },
+      username: "jirc",
+      realname: "jIRC ActiveX DLL by J. Peletier, www.peletier.com",
+      serverPassword: "server secret",
+    }
+  );
+  assert.deepEqual(
+    buildClientOptions({
+      nick: "Wit",
       accountAuth: {
         method: "sasl",
         username: "wit-account",
@@ -18,7 +34,6 @@ test("client options map server PASS and SASL PLAIN without inferred NickServ", 
       bot: true,
       reconnect: false,
       ctcpReplies: { version: "Wit TypeScript" },
-      serverPassword: "server secret",
       authMethod: "sasl",
       username: "wit-account",
       password: "account secret",
@@ -27,6 +42,8 @@ test("client options map server PASS and SASL PLAIN without inferred NickServ", 
   const unauthenticated = buildClientOptions({ nick: "Wit" });
   assert.equal("password" in unauthenticated, false);
   assert.equal("authMethod" in unauthenticated, false);
+  assert.equal("username" in unauthenticated, false);
+  assert.equal("realname" in unauthenticated, false);
 });
 
 test("service auth builder requires an explicit safe target and defaults IDENTIFY", () => {

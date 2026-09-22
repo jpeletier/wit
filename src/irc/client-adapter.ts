@@ -24,6 +24,8 @@ export interface IrcClientConfig {
   server: string;
   port: number;
   tls: boolean;
+  ident?: string;
+  realname?: string;
   serverPassword?: string;
   accountAuth?: AccountAuth;
   serviceAuth?: ServiceAuth;
@@ -44,7 +46,17 @@ export class IrcClientAdapter implements IrcPort {
   #connectionEnded = true;
 
   constructor(private readonly config: IrcClientConfig) {
-    this.#client = new Client(buildClientOptions(config));
+    this.#client = new Client(
+      buildClientOptions({
+        nick: config.nick,
+        ...(config.accountAuth === undefined && config.ident !== undefined
+          ? { username: config.ident }
+          : {}),
+        ...(config.realname === undefined ? {} : { realname: config.realname }),
+        ...(config.serverPassword === undefined ? {} : { serverPassword: config.serverPassword }),
+        ...(config.accountAuth === undefined ? {} : { accountAuth: config.accountAuth }),
+      })
+    );
     this.#outbound = new OutboundQueue(
       resolveOutboundDelayMs(config.outboundDelayMs),
       undefined,
