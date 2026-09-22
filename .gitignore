@@ -1,5 +1,6 @@
 # Runtime databases and operational output
 /db/
+/data/
 logs/
 *.log
 *.sqlite

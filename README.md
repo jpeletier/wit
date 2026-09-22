@@ -17,26 +17,27 @@ npm run db:audit
 npm run db:create
 npm run db:import
 npm run db:verify
-cp config.example.json config.json
+mkdir -p data
+cp config.example.json data/config.json
 npm start
 ```
 
-`config.json`, `.env`, `db/`, logs, backups, binaries, and build output are ignored. Configure one object per bot; every object gets an independent IRC lifecycle and outbound PRIVMSG/NOTICE queue. Connections retry indefinitely with adapter-owned exponential backoff from 5 to 120 seconds, reset after registration. `outboundDelayMs` defaults to the legacy-compatible 2000 ms and accepts 1 through 300000. Ports accept 1 through 65535; network IDs must be positive safe integers; channel names use an IRC prefix (`#`, `&`, `+`, or `!`), are unique per bot, and are limited to 50 UTF-8 bytes. Multiple bots may share a network in different channels, and channel names may repeat on different networks; the same network/channel pair cannot be assigned twice. Unknown configuration fields are rejected. Never commit real passwords.
+`data/config.json` and `data/wit.db` are the ignored runtime configuration and database files. The staging database remains under `db/`. Configure one object per bot; every object gets an independent IRC lifecycle and outbound PRIVMSG/NOTICE queue. Connections retry indefinitely with adapter-owned exponential backoff from 5 to 120 seconds, reset after registration. `outboundDelayMs` defaults to the legacy-compatible 2000 ms and accepts 1 through 300000. Ports accept 1 through 65535; network IDs must be positive safe integers; channel names use an IRC prefix (`#`, `&`, `+`, or `!`), are unique per bot, and are limited to 50 UTF-8 bytes. Multiple bots may share a network in different channels, and channel names may repeat on different networks; the same network/channel pair cannot be assigned twice. Unknown configuration fields are rejected. Never commit real passwords.
 
 Wit accepts IRC invitations. Per bot, `channelLifecycle` defaults to `messageIdleMinutes: 360`, `gameIdleMinutes: 2880`, `maxChannels: 15`, and `inviteEvictionIdleMinutes: 60`. A channel is left after six hours without a user message, or after 48 hours of user activity without a game start. Active games are never evicted. At the channel limit, an invitation evicts the channel with the oldest user message only when it has been idle for at least the eviction threshold; otherwise Wit politely refuses. Pending joins count toward the limit.
 
 Environment overrides:
 
-- `WIT_CONFIG`: configuration path, default `config.json`
-- `WIT_DATABASE`: runtime/target database path, default from config or `db/wit.sqlite`
+- `WIT_CONFIG`: configuration path, default `data/config.json`
+- `WIT_DATABASE`: runtime/target database path, default from config or `data/wit.db`
 - `WIT_SOURCE_DATABASE`: staging extraction, default `db/trivial.sqlite`
-- `WIT_IMPORT_REPORT`: ignored audit report, default `db/import-audit.json`
+- `WIT_IMPORT_REPORT`: ignored audit report, default `data/import-audit.json`
 
 Startup requires the configured database path to already be a regular SQLite file. Before enabling runtime write PRAGMAs, the bot checks migration version 1 and the required runtime tables; it exits on missing, empty, malformed, or newer schemas without creating a replacement database. This is a fast structural check, not a full-table integrity scan.
 
 ## Authentication
 
-Authentication is optional and explicit in ignored `config.json`; no service or NickServ target is inferred. `serverPassword` is sent only as the IRC server `PASS`. `accountAuth` supports SASL PLAIN with the fields `method` (exactly `sasl`), `username`, and `password`. Authentication is intentionally omitted from `config.example.json`: add only the required field names to ignored `config.json`, with real credentials supplied locally rather than password placeholders.
+Authentication is optional and explicit in ignored `data/config.json`; no service or NickServ target is inferred. `serverPassword` is sent only as the IRC server `PASS`. `accountAuth` supports SASL PLAIN with the fields `method` (exactly `sasl`), `username`, and `password`. Authentication is intentionally omitted from `config.example.json`: add only the required field names to ignored `data/config.json`, with real credentials supplied locally rather than password placeholders.
 
 Post-registration service authentication is separate under `serviceAuth`. It requires single-token `target` and `password` values, accepts an optional single-token `command` (default `IDENTIFY`) and optional `account`, and supports explicit targets such as `nick@server`. It is paced as the first outbound item after each successful registration, before configured channels are joined.
 

@@ -1,5 +1,5 @@
 {
-  "database": "./db/wit.sqlite",
+  "database": "./data/wit.db",
   "welcomeOnJoin": true,
   "bots": [
     {

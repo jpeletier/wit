@@ -31,7 +31,7 @@ function config(
   rootOverrides: Record<string, unknown> = {}
 ): Record<string, unknown> {
   return {
-    database: "./db/wit.sqlite",
+    database: "./data/wit.db",
     bots: [bot(botOverrides)],
     ...rootOverrides,
   };

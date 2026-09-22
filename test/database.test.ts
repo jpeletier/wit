@@ -286,9 +286,9 @@ test("selector uses weighted subjects, IFS positions, FIFO and refresh mutations
 });
 
 const importedSchemaReady =
-  existsSync("db/wit.sqlite") &&
+  existsSync("data/wit.db") &&
   (() => {
-    const db = new DatabaseSync("db/wit.sqlite", { readOnly: true });
+    const db = new DatabaseSync("data/wit.db", { readOnly: true });
     try {
       return (
         db.prepare("PRAGMA table_info(channels)").all() as Array<{
@@ -304,7 +304,7 @@ test(
   "regenerated historical database retains league 305 and custom default subsets",
   { skip: !importedSchemaReady },
   () => {
-    const db = new DatabaseSync("db/wit.sqlite", { readOnly: true });
+    const db = new DatabaseSync("data/wit.db", { readOnly: true });
     assert.equal(
       (
         db.prepare("SELECT count(*) count FROM leagues WHERE id=305").get() as {

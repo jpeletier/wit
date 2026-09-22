@@ -10,7 +10,7 @@ import { enableTlsServerName } from "./irc/tls-sni.js";
 
 enableTlsServerName();
 
-const config = loadConfig(resolve(process.env.WIT_CONFIG ?? "config.json"));
+const config = loadConfig(resolve(process.env.WIT_CONFIG ?? "data/config.json"));
 const database = openDatabase(
   resolve(selectDatabasePath(config.database, process.env.WIT_DATABASE))
 );
