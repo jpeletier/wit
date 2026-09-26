@@ -68,9 +68,16 @@ interface PendingJoin {
   channel: string;
   requestedAt: number;
   invitedBy: IrcUser | undefined;
+  requestedBy?: IrcUser;
+}
+interface PendingCommandInvite {
+  channel: string;
+  user: IrcUser;
+  timer: NodeJS.Timeout;
 }
 
 const MINUTE_MS = 60_000;
+const INVITE_INSPECTION_TIMEOUT_MS = 10_000;
 
 const HELP = [
   "Wit IRC Bot, por Javier Peletier Ribera.",
@@ -81,6 +88,7 @@ const HELP = [
   "TRIVIAL #canal STOP         : Detiene una partida de trivial.",
   "CYL #canal numdesafíos      : Comienza una partida de Cifras y Letras.",
   "CYL #canal STOP             : Detiene una partida de Cifras y Letras.",
+  "INVITE #canal               : Entra en un canal si eres operador.",
   "DATE                        : Muestra la hora de Madrid.",
 ];
 
@@ -89,6 +97,7 @@ export class WitBot {
   readonly #channelActivity = new Map<string, ChannelActivity>();
   readonly #pendingJoins = new Map<string, PendingJoin>();
   readonly #replacementJoins = new Map<string, PendingJoin>();
+  readonly #commandInvites = new Map<string, PendingCommandInvite>();
   readonly #unsubscribe: () => void;
   #timer: NodeJS.Timeout | undefined;
   #stopped = false;
@@ -120,6 +129,7 @@ export class WitBot {
       clearInterval(this.#timer);
     }
     this.#timer = undefined;
+    this.#clearCommandInvites();
     this.#endAll("Bot detenido");
     this.#unsubscribe();
     this.irc.disconnect();
@@ -186,6 +196,7 @@ export class WitBot {
         this.#channelActivity.clear();
         this.#pendingJoins.clear();
         this.#replacementJoins.clear();
+        this.#clearCommandInvites();
         this.#endAll("La partida terminó porque el bot se desconectó");
         break;
       case "caseMapping":
@@ -196,6 +207,7 @@ export class WitBot {
         this.#recordConfiguredJoins();
         break;
       case "membership":
+        this.#recordInviteMembership(event.channel);
         break;
     }
   }
@@ -230,6 +242,10 @@ export class WitBot {
         user.nick,
         `La hora en Madrid es ${formatMadridDisplayDateTime(this.clock.now())}`
       );
+      return;
+    }
+    if (command === "INVITE") {
+      this.#commandInvite(user, parts);
       return;
     }
     if (command !== "TRIVIAL" && command !== "CYL") {
@@ -300,6 +316,72 @@ export class WitBot {
     } else {
       this.#startCyl(channel, user, count);
     }
+  }
+
+  #commandInvite(user: IrcUser, parts: string[]): void {
+    const channel = parts[1];
+    if (channel === undefined || !/^[#&+!]/u.test(channel) || parts.length !== 2) {
+      this.irc.notice(user.nick, "Sintaxis incorrecta. Usa INVITE #canal");
+      return;
+    }
+    const key = this.#key(channel);
+    if (this.irc.isJoined(channel)) {
+      this.irc.notice(user.nick, `Ya estoy en ${channel}.`);
+      return;
+    }
+    if (this.#commandInvites.has(key)) {
+      this.irc.notice(user.nick, `Ya estoy comprobando ${channel}.`);
+      return;
+    }
+    const pending: PendingCommandInvite = {
+      channel,
+      user,
+      timer: setTimeout(() => {
+        if (this.#commandInvites.get(key) !== pending) {
+          return;
+        }
+        this.#commandInvites.delete(key);
+        this.irc.notice(user.nick, `No pude comprobar los operadores de ${channel}.`);
+      }, INVITE_INSPECTION_TIMEOUT_MS),
+    };
+    this.#commandInvites.set(key, pending);
+    this.irc.inspectChannel(channel);
+  }
+
+  #recordInviteMembership(channel: string): void {
+    const pending = this.#commandInvites.get(this.#key(channel));
+    if (pending === undefined) {
+      return;
+    }
+    this.#completeCommandInvite(pending);
+  }
+
+  #completeCommandInvite(pending: PendingCommandInvite): void {
+    const key = this.#key(pending.channel);
+    this.#commandInvites.delete(key);
+    clearTimeout(pending.timer);
+    if (!this.irc.isOperator(pending.channel, pending.user.nick)) {
+      this.irc.notice(
+        pending.user.nick,
+        `Sólo un operador (@) de ${pending.channel} puede invitarme.`
+      );
+      return;
+    }
+    this.#pendingJoins.set(key, {
+      channel: pending.channel,
+      requestedAt: this.clock.now().getTime(),
+      invitedBy: undefined,
+      requestedBy: pending.user,
+    });
+    this.irc.join(pending.channel);
+    this.irc.notice(pending.user.nick, `Intentaré entrar en ${pending.channel}.`);
+  }
+
+  #clearCommandInvites(): void {
+    for (const pending of this.#commandInvites.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.#commandInvites.clear();
   }
 
   #startTrivia(channel: string, user: IrcUser, count: number): void {
@@ -790,6 +872,9 @@ export class WitBot {
         channel,
         `Para organizar una partida, dime en privado: TRIVIAL ${channel} o CYL ${channel}`
       );
+    }
+    if (pending?.requestedBy !== undefined) {
+      this.irc.notice(pending.requestedBy.nick, `He entrado en ${channel}.`);
     }
   }
   #recordMessage(channel: string, user: IrcUser): void {

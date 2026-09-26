@@ -89,7 +89,7 @@ export class IrcClientAdapter implements IrcPort {
         }
       },
       config.channels,
-      (channel) => this.#client.join(channel),
+      (channel) => this.join(channel),
       () => this.#client.disconnect(),
       () => this.#emit({ type: "registered" })
     );
@@ -119,10 +119,15 @@ export class IrcClientAdapter implements IrcPort {
     this.#client.quit(reason);
   }
   join(channel: string): void {
+    this.log.info({ channel }, "IRC join requested");
     this.#client.join(channel);
   }
   part(channel: string, reason?: string): void {
     this.#client.part(channel, reason === undefined ? undefined : sanitizeIrcText(reason));
+  }
+  inspectChannel(channel: string): void {
+    this.log.info({ channel }, "IRC names requested");
+    this.#client.names(channel);
   }
   say(target: string, text: string): void {
     const safeText = sanitizeIrcText(text);
@@ -168,6 +173,27 @@ export class IrcClientAdapter implements IrcPort {
     });
     this.#client.on("disconnected", () => this.#handleDisconnected());
     this.#client.on("raw:error", () => this.#client.disconnect());
+    this.#client.on("error_reply", (message) =>
+      this.log.warn(
+        {
+          command: message.command,
+          arguments: message.params.args,
+          description: message.params.text,
+        },
+        "IRC server error reply"
+      )
+    );
+    this.#client.on("fail", (message) =>
+      this.log.warn(
+        {
+          command: message.params.command,
+          code: message.params.code,
+          context: message.params.context,
+          description: message.params.description,
+        },
+        "IRC server command failed"
+      )
+    );
     this.#client.on("privmsg:channel", (message) =>
       this.#emit({
         type: "message",
@@ -184,7 +210,17 @@ export class IrcClientAdapter implements IrcPort {
       })
     );
     this.#client.on("invite", (message) => {
-      if (!this.#sameNick(message.params.nick, this.nick)) {
+      const accepted = this.#sameNick(message.params.nick, this.nick);
+      this.log.info(
+        {
+          channel: message.params.channel,
+          invitedNick: message.params.nick,
+          inviter: message.source?.name,
+          accepted,
+        },
+        "IRC invite received"
+      );
+      if (!accepted) {
         return;
       }
       this.#emit({
@@ -198,6 +234,7 @@ export class IrcClientAdapter implements IrcPort {
       const self = this.#sameNick(user.nick, this.nick);
       if (self) {
         this.#membership.join(message.params.channel);
+        this.log.info({ channel: message.params.channel }, "IRC join confirmed");
       } else {
         this.#presence.join(message.params.channel, user.nick);
       }
@@ -260,6 +297,18 @@ export class IrcClientAdapter implements IrcPort {
     });
     this.#client.on("nicklist", (message) => {
       this.#membership.setMembers(message.params.channel, message.params.nicklist);
+      this.#emit({ type: "membership", channel: message.params.channel });
+    });
+    this.#client.on("names_reply", (message) => {
+      const members = Object.entries(message.params.names).map(([nick, prefixes]) => ({
+        nick,
+        prefix: prefixes.join(""),
+      }));
+      this.#membership.setMembers(message.params.channel, members);
+      this.log.info(
+        { channel: message.params.channel, members: members.length },
+        "IRC names received"
+      );
       this.#emit({ type: "membership", channel: message.params.channel });
     });
     this.#client.on("raw", (message) => {

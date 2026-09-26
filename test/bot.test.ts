@@ -174,6 +174,31 @@ test("INVITE joins, greets the inviter and suppresses duplicate requests", () =>
   db.close();
 });
 
+test("private INVITE requires an operator", () => {
+  const { bot, irc, db } = fixture();
+  const operator = { identity: "operator", nick: "Ana" };
+  irc.setOperator("#abierto", operator.nick);
+
+  bot.handle({ type: "privateMessage", user: operator, text: "INVITE #abierto" });
+  assert.deepEqual(irc.inspectedChannels, ["#abierto"]);
+  bot.handle({ type: "membership", channel: "#abierto" });
+  assert.ok(irc.sent.some((entry) => entry.kind === "join" && entry.target === "#abierto"));
+  assert.ok(irc.sent.some((entry) => entry.text.includes("Intentaré entrar")));
+  irc.emit({
+    type: "join",
+    channel: "#abierto",
+    user: { identity: "bot", nick: "Wit" },
+    self: true,
+  });
+  assert.ok(irc.sent.some((entry) => entry.text === "He entrado en #abierto."));
+
+  const user = { identity: "user", nick: "Bea" };
+  bot.handle({ type: "privateMessage", user, text: "INVITE #abierto2" });
+  bot.handle({ type: "membership", channel: "#abierto2" });
+  assert.ok(irc.sent.some((entry) => entry.text.includes("Sólo un operador (@) de #abierto2")));
+  db.close();
+});
+
 test("INVITE logging identifies the inviter and target channel", () => {
   const log = new RecordingLogger();
   const { bot, db } = fixture({}, log);

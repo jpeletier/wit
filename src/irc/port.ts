@@ -292,6 +292,7 @@ export interface IrcPort {
   disconnect(reason?: string): void;
   join(channel: string): void;
   part(channel: string, reason?: string): void;
+  inspectChannel(channel: string): void;
   say(target: string, text: string): void;
   notice(target: string, text: string): void;
   isJoined(channel: string): boolean;
@@ -307,6 +308,7 @@ export class FakeIrcPort implements IrcPort {
   }> = [];
   readonly #listeners = new Set<(event: IrcEvent) => void>();
   readonly state = new IrcMembershipState();
+  readonly inspectedChannels: string[] = [];
   disconnectCount = 0;
   constructor(public nick = "Wit") {}
   get caseMapping(): IrcCaseMapping {
@@ -335,6 +337,9 @@ export class FakeIrcPort implements IrcPort {
   }
   part(channel: string, reason = ""): void {
     this.sent.push({ kind: "part", target: channel, text: reason });
+  }
+  inspectChannel(channel: string): void {
+    this.inspectedChannels.push(channel);
   }
   say(target: string, text: string): void {
     this.sent.push({ kind: "message", target, text: sanitizeIrcText(text) });
