@@ -843,8 +843,9 @@ test("numeric Trivia displays literals once and expressions with canonical resul
 
 test("Trivia sanitizes database question text and line-broken repeated answers", () => {
   const { bot, irc, db } = fixture();
+  // node:sqlite can truncate TEXT at NUL; core.test.ts covers NUL sanitization directly.
   db.exec(`UPDATE questions
-    SET question='Pregunta' || char(10) || 'inyectada' || char(0) || 'fin',
+    SET question='Pregunta' || char(10) || 'inyectada' || char(13) || 'fin',
         answer='Respuesta' || char(13) || char(10) || 'RESPUESTA'
     WHERE id=1`);
   const user = { identity: "u", nick: "Ana" };
@@ -868,8 +869,9 @@ test("Trivia sanitizes database question text and line-broken repeated answers",
 
 test("CYL sanitizes database definitions before displaying excerpts", () => {
   const { bot, irc, db } = fixture();
+  // Keep embedded NUL coverage in core.test.ts, outside the SQLite TEXT boundary.
   db.exec(`UPDATE dictionary
-    SET meaning='primera línea' || char(10) || char(0) || 'segunda parte'
+    SET meaning='primera línea' || char(13) || char(10) || 'segunda parte'
     WHERE id=1`);
   const user = { identity: "u", nick: "Ana" };
   irc.emit({
