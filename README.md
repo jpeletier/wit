@@ -32,6 +32,9 @@ Environment overrides:
 - `WIT_DATABASE`: runtime/target database path, default from config or `data/wit.db`
 - `WIT_SOURCE_DATABASE`: staging extraction, default `db/trivial.sqlite`
 - `WIT_IMPORT_REPORT`: ignored audit report, default `data/import-audit.json`
+- `WIT_LOG_LEVEL`: Pino log level, default `info`; use `debug` for IRC and channel diagnostics
+
+Wit writes structured JSON logs to stderr, leaving stdout unused. Every record has a `module` tag: `service`, `irc.connection`, `bot`, or `maintenance.questions`. Connection, channel, game, shutdown, and failure events are logged at `info` or above; individual IRC messages, game ticks, and successful outbound sends are not logged. Invite logs include both `invitedBy` and the requested `channel`; rejected invitations include a reason at `debug` or `info` when the channel limit prevents joining. Do not log raw IRC payloads or configuration because they can contain credentials.
 
 Startup requires the configured database path to already be a regular SQLite file. Before enabling runtime write PRAGMAs, the bot checks migration version 1 and the required runtime tables; it exits on missing, empty, malformed, or newer schemas without creating a replacement database. This is a fast structural check, not a full-table integrity scan.
 

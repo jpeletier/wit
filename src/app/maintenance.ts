@@ -1,10 +1,12 @@
 import { sanitizeIrcText } from "../core/format.js";
+import { createLogger } from "../logging.js";
 
 const MAX_ERROR_LENGTH = 200;
+const log = createLogger().child({ module: "maintenance.questions" });
 
 export function runQuestionMaintenance(
   ageQuestions: () => void,
-  log: (message: string) => void = console.error
+  report: (message: string) => void = (message) => log.error({}, message)
 ): void {
   try {
     ageQuestions();
@@ -18,6 +20,6 @@ export function runQuestionMaintenance(
     detail = sanitizeIrcText(detail);
     const concise =
       detail.length > MAX_ERROR_LENGTH ? `${detail.slice(0, MAX_ERROR_LENGTH - 3)}...` : detail;
-    log(`Question maintenance failed: ${concise}`);
+    report(`Question maintenance failed: ${concise}`);
   }
 }

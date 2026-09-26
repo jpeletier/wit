@@ -1,6 +1,7 @@
 import { Client } from "irc-client-ts";
 import { ircCasefold } from "../core/text.js";
 import { sanitizeIrcText } from "../core/format.js";
+import { silentLogger, type Logger } from "../logging-port.js";
 import {
   buildClientOptions,
   buildServiceAuthCommand,
@@ -45,7 +46,10 @@ export class IrcClientAdapter implements IrcPort {
   #caseMapping: IrcCaseMapping = "rfc1459";
   #connectionEnded = true;
 
-  constructor(private readonly config: IrcClientConfig) {
+  constructor(
+    private readonly config: IrcClientConfig,
+    private readonly log: Logger = silentLogger
+  ) {
     this.#client = new Client(
       buildClientOptions({
         nick: config.nick,
@@ -60,7 +64,7 @@ export class IrcClientAdapter implements IrcPort {
     this.#outbound = new OutboundQueue(
       resolveOutboundDelayMs(config.outboundDelayMs),
       undefined,
-      (error) => console.error(`IRC ${this.config.nick} outbound send failed`, error)
+      (error) => this.log.error({ err: error }, "Outbound IRC send failed")
     );
     this.#reconnect = new ReconnectController(
       async () => {
@@ -73,7 +77,8 @@ export class IrcClientAdapter implements IrcPort {
         }
       },
       undefined,
-      (error) => console.error(`IRC ${this.config.nick} connection attempt failed`, error)
+      (error) => this.log.warn({ err: error }, "IRC connection attempt failed"),
+      (delayMs) => this.log.warn({ delayMs }, "IRC reconnect scheduled")
     );
     const serviceAuth = buildServiceAuthCommand(config.serviceAuth);
     this.#registration = new RegistrationPolicy(
@@ -101,9 +106,14 @@ export class IrcClientAdapter implements IrcPort {
     return this.#membership.joinedChannels();
   }
   async connect(): Promise<void> {
+    this.log.info(
+      { server: this.config.server, port: this.config.port, tls: this.config.tls },
+      "IRC connecting"
+    );
     await this.#reconnect.start();
   }
   disconnect(reason = "Wit detenido"): void {
+    this.log.info({}, "IRC disconnecting");
     this.#reconnect.stop();
     this.#outbound.clear();
     this.#client.quit(reason);
@@ -136,7 +146,7 @@ export class IrcClientAdapter implements IrcPort {
 
   #wireEvents(): void {
     this.#client.on("error", (error) => {
-      console.error(`IRC ${this.config.nick}: ${error.message}`);
+      this.log.error({ err: error, type: error.type }, "IRC client error");
       if (error.type === "close") {
         this.#handleDisconnected();
       } else if (["connect", "read"].includes(error.type)) {
@@ -152,7 +162,9 @@ export class IrcClientAdapter implements IrcPort {
       }
     });
     this.#client.on("register", () => {
-      this.#registration.registered();
+      if (this.#registration.registered()) {
+        this.log.info({}, "IRC registration complete");
+      }
     });
     this.#client.on("disconnected", () => this.#handleDisconnected());
     this.#client.on("raw:error", () => this.#client.disconnect());
@@ -279,6 +291,7 @@ export class IrcClientAdapter implements IrcPort {
       return;
     }
     this.#connectionEnded = true;
+    this.log.warn({}, "IRC disconnected");
     this.#outbound.clear();
     this.#presence.clear();
     this.#registration.disconnected();
