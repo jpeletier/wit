@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { parse } from "yaml";
 import type { AccountAuth, ServiceAuth } from "./irc/auth.js";
 
 const ROOT_KEYS = ["database", "welcomeOnJoin", "bots"] as const;
@@ -15,10 +16,12 @@ const BOT_KEYS = [
   "networkId",
   "channels",
   "outboundDelayMs",
+  "heartbeat",
   "channelLifecycle",
 ] as const;
 const ACCOUNT_AUTH_KEYS = ["method", "username", "password"] as const;
 const SERVICE_AUTH_KEYS = ["target", "command", "account", "password"] as const;
+const HEARTBEAT_KEYS = ["pingIntervalSeconds", "maxMissedPongs"] as const;
 const CHANNEL_LIFECYCLE_KEYS = [
   "messageIdleMinutes",
   "gameIdleMinutes",
@@ -27,6 +30,8 @@ const CHANNEL_LIFECYCLE_KEYS = [
 ] as const;
 export const MAX_CHANNEL_LENGTH = 50;
 export const MAX_OUTBOUND_DELAY_MS = 300_000;
+export const MAX_HEARTBEAT_INTERVAL_SECONDS = 3_600;
+export const MAX_MISSED_PONGS = 100;
 export const MAX_CHANNEL_LIFECYCLE_MINUTES = 5_256_000;
 export const MAX_JOINED_CHANNELS = 100;
 
@@ -37,11 +42,20 @@ export interface ChannelLifecycleConfig {
   inviteEvictionIdleMinutes: number;
 }
 
+export interface HeartbeatConfig {
+  pingIntervalSeconds: number;
+  maxMissedPongs: number;
+}
+
 export const DEFAULT_CHANNEL_LIFECYCLE: Readonly<ChannelLifecycleConfig> = Object.freeze({
   messageIdleMinutes: 6 * 60,
   gameIdleMinutes: 48 * 60,
   maxChannels: 15,
   inviteEvictionIdleMinutes: 60,
+});
+export const DEFAULT_HEARTBEAT: Readonly<HeartbeatConfig> = Object.freeze({
+  pingIntervalSeconds: 60,
+  maxMissedPongs: 2,
 });
 
 export const DEFAULT_IDENT = "jirc";
@@ -61,6 +75,7 @@ export interface BotConfig {
   networkId: number;
   channels: string[];
   outboundDelayMs?: number;
+  heartbeat: HeartbeatConfig;
   channelLifecycle: ChannelLifecycleConfig;
 }
 export interface Config {
@@ -78,9 +93,9 @@ export function loadConfig(path: string): Config {
   }
   let raw: unknown;
   try {
-    raw = JSON.parse(source);
+    raw = parse(source);
   } catch (cause) {
-    throw new Error(`Invalid JSON in config file ${path}`, { cause });
+    throw new Error(`Invalid YAML in config file ${path}`, { cause });
   }
   try {
     return parseConfig(raw);
@@ -170,6 +185,7 @@ function validateBot(raw: unknown, index: number): BotConfig {
     throw new Error(`${path}.networkId must be a positive safe integer`);
   }
   const channels = validateChannels(value.channels, path);
+  const heartbeat = validateHeartbeat(value.heartbeat, path);
   const channelLifecycle = validateChannelLifecycle(value.channelLifecycle, path);
   if (channels.length > channelLifecycle.maxChannels) {
     throw new Error(`${path}.channels cannot exceed channelLifecycle.maxChannels`);
@@ -194,6 +210,7 @@ function validateBot(raw: unknown, index: number): BotConfig {
     realname,
     networkId: value.networkId,
     channels,
+    heartbeat,
     channelLifecycle,
     ...(typeof value.outboundDelayMs === "number"
       ? { outboundDelayMs: value.outboundDelayMs }
@@ -202,6 +219,26 @@ function validateBot(raw: unknown, index: number): BotConfig {
     ...(accountAuth === undefined ? {} : { accountAuth }),
     ...(serviceAuth === undefined ? {} : { serviceAuth }),
   });
+}
+
+function validateHeartbeat(raw: unknown, botPath: string): HeartbeatConfig {
+  if (raw === undefined) {
+    return DEFAULT_HEARTBEAT;
+  }
+  const path = `${botPath}.heartbeat`;
+  const value = objectValue(raw, path);
+  rejectUnknownKeys(value, HEARTBEAT_KEYS, path);
+  const pingIntervalSeconds = value.pingIntervalSeconds ?? DEFAULT_HEARTBEAT.pingIntervalSeconds;
+  const maxMissedPongs = value.maxMissedPongs ?? DEFAULT_HEARTBEAT.maxMissedPongs;
+  if (!integerInRange(pingIntervalSeconds, 1, MAX_HEARTBEAT_INTERVAL_SECONDS)) {
+    throw new Error(
+      `${path}.pingIntervalSeconds must be an integer from 1 to ${MAX_HEARTBEAT_INTERVAL_SECONDS}`
+    );
+  }
+  if (!integerInRange(maxMissedPongs, 1, MAX_MISSED_PONGS)) {
+    throw new Error(`${path}.maxMissedPongs must be an integer from 1 to ${MAX_MISSED_PONGS}`);
+  }
+  return Object.freeze({ pingIntervalSeconds, maxMissedPongs });
 }
 
 function validateChannelLifecycle(raw: unknown, botPath: string): ChannelLifecycleConfig {

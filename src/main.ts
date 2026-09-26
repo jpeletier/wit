@@ -12,7 +12,7 @@ import { createLogger } from "./logging.js";
 const log = createLogger().child({ module: "service" });
 enableTlsServerName();
 
-const config = loadConfig(resolve(process.env.WIT_CONFIG ?? "data/config.json"));
+const config = loadConfig(resolve(process.env.WIT_CONFIG ?? "data/config.yaml"));
 log.info({ bots: config.bots.length }, "Wit starting");
 const database = openDatabase(
   resolve(selectDatabasePath(config.database, process.env.WIT_DATABASE))

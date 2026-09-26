@@ -1,5 +1,7 @@
 export const INITIAL_RECONNECT_DELAY_MS = 5_000;
 export const MAX_RECONNECT_DELAY_MS = 120_000;
+export const HEARTBEAT_INTERVAL_MS = 60_000;
+export const MAX_MISSED_PONGS = 2;
 
 export interface ReconnectTimer {
   cancel(): void;
@@ -105,6 +107,66 @@ export class ReconnectController {
       this.#timer = undefined;
       void this.#attempt();
     }, delayMs);
+  }
+}
+
+export class HeartbeatController {
+  #awaitingPong = false;
+  #missedPongs = 0;
+  #started = false;
+  #timer: ReconnectTimer | undefined;
+
+  constructor(
+    private readonly ping: () => void,
+    private readonly disconnect: () => void,
+    private readonly scheduler: ReconnectScheduler = systemScheduler,
+    private readonly intervalMs = HEARTBEAT_INTERVAL_MS,
+    private readonly maxMissedPongs = MAX_MISSED_PONGS
+  ) {}
+
+  start(): void {
+    if (this.#started) {
+      return;
+    }
+    this.#started = true;
+    this.#schedule();
+  }
+
+  pong(): void {
+    this.#awaitingPong = false;
+    this.#missedPongs = 0;
+  }
+
+  stop(): void {
+    this.#started = false;
+    this.#awaitingPong = false;
+    this.#missedPongs = 0;
+    this.#timer?.cancel();
+    this.#timer = undefined;
+  }
+
+  #schedule(): void {
+    this.#timer = this.scheduler.schedule(() => {
+      this.#timer = undefined;
+      this.#tick();
+    }, this.intervalMs);
+  }
+
+  #tick(): void {
+    if (!this.#started) {
+      return;
+    }
+    if (this.#awaitingPong) {
+      this.#missedPongs++;
+      if (this.#missedPongs === this.maxMissedPongs) {
+        this.stop();
+        this.disconnect();
+        return;
+      }
+    }
+    this.ping();
+    this.#awaitingPong = true;
+    this.#schedule();
   }
 }
 

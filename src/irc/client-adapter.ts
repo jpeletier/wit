@@ -9,7 +9,11 @@ import {
   type ServiceAuth,
 } from "./auth.js";
 import { OutboundQueue, resolveOutboundDelayMs } from "./outbound-queue.js";
-import { RegistrationPolicy, ReconnectController } from "./reconnect-controller.js";
+import {
+  HeartbeatController,
+  RegistrationPolicy,
+  ReconnectController,
+} from "./reconnect-controller.js";
 import {
   IrcMembershipState,
   IrcIdentityTracker,
@@ -32,6 +36,10 @@ export interface IrcClientConfig {
   serviceAuth?: ServiceAuth;
   channels: string[];
   outboundDelayMs?: number;
+  heartbeat: {
+    pingIntervalSeconds: number;
+    maxMissedPongs: number;
+  };
 }
 
 export class IrcClientAdapter implements IrcPort {
@@ -41,6 +49,7 @@ export class IrcClientAdapter implements IrcPort {
   readonly #outbound: OutboundQueue;
   readonly #reconnect: ReconnectController;
   readonly #registration: RegistrationPolicy;
+  readonly #heartbeat: HeartbeatController;
   readonly #identities = new IrcIdentityTracker((nick) => ircCasefold(nick, this.#caseMapping));
   readonly #presence = new IrcPresenceCoordinator(this.#membership, this.#identities);
   #caseMapping: IrcCaseMapping = "rfc1459";
@@ -80,6 +89,13 @@ export class IrcClientAdapter implements IrcPort {
       (error) => this.log.warn({ err: error }, "IRC connection attempt failed"),
       (delayMs) => this.log.warn({ delayMs }, "IRC reconnect scheduled")
     );
+    this.#heartbeat = new HeartbeatController(
+      () => this.#client.ping(),
+      () => this.#client.disconnect(),
+      undefined,
+      config.heartbeat.pingIntervalSeconds * 1_000,
+      config.heartbeat.maxMissedPongs
+    );
     const serviceAuth = buildServiceAuthCommand(config.serviceAuth);
     this.#registration = new RegistrationPolicy(
       this.#reconnect,
@@ -115,6 +131,7 @@ export class IrcClientAdapter implements IrcPort {
   disconnect(reason = "Wit detenido"): void {
     this.log.info({}, "IRC disconnecting");
     this.#reconnect.stop();
+    this.#heartbeat.stop();
     this.#outbound.clear();
     this.#client.quit(reason);
   }
@@ -163,9 +180,11 @@ export class IrcClientAdapter implements IrcPort {
     });
     this.#client.on("register", () => {
       if (this.#registration.registered()) {
+        this.#heartbeat.start();
         this.log.info({}, "IRC registration complete");
       }
     });
+    this.#client.on("pong", () => this.#heartbeat.pong());
     this.#client.on("disconnected", () => this.#handleDisconnected());
     this.#client.on("raw:error", () => this.#client.disconnect());
     this.#client.on("privmsg:channel", (message) =>
@@ -292,6 +311,7 @@ export class IrcClientAdapter implements IrcPort {
     }
     this.#connectionEnded = true;
     this.log.warn({}, "IRC disconnected");
+    this.#heartbeat.stop();
     this.#outbound.clear();
     this.#presence.clear();
     this.#registration.disconnected();

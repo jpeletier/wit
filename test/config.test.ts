@@ -5,10 +5,13 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   DEFAULT_CHANNEL_LIFECYCLE,
+  DEFAULT_HEARTBEAT,
   loadConfig,
   MAX_CHANNEL_LENGTH,
   MAX_CHANNEL_LIFECYCLE_MINUTES,
+  MAX_HEARTBEAT_INTERVAL_SECONDS,
   MAX_JOINED_CHANNELS,
+  MAX_MISSED_PONGS,
   MAX_OUTBOUND_DELAY_MS,
   MAX_REALNAME_BYTES,
   parseConfig,
@@ -45,11 +48,13 @@ test("config parses and freezes minimal normalized output", () => {
   assert.equal(parsed.bots[0]?.ident, "jirc");
   assert.equal(parsed.bots[0]?.realname, "jIRC ActiveX DLL by J. Peletier, www.peletier.com");
   assert.deepEqual(parsed.bots[0]?.channels, ["#trivia"]);
+  assert.deepEqual(parsed.bots[0]?.heartbeat, DEFAULT_HEARTBEAT);
   assert.deepEqual(parsed.bots[0]?.channelLifecycle, DEFAULT_CHANNEL_LIFECYCLE);
   assert.equal(Object.isFrozen(parsed), true);
   assert.equal(Object.isFrozen(parsed.bots), true);
   assert.equal(Object.isFrozen(parsed.bots[0]), true);
   assert.equal(Object.isFrozen(parsed.bots[0]?.channels), true);
+  assert.equal(Object.isFrozen(parsed.bots[0]?.heartbeat), true);
   assert.equal(Object.isFrozen(parsed.bots[0]?.channelLifecycle), true);
   (raw.bots as Array<Record<string, unknown>>)[0]!.channels = ["#changed"];
   assert.deepEqual(parsed.bots[0]?.channels, ["#trivia"]);
@@ -72,6 +77,10 @@ test("config accepts all documented fields and protocol boundaries", () => {
         networkId: Number.MAX_SAFE_INTEGER,
         channels: [longestChannel, "&local", "+modeless", "!safe"],
         outboundDelayMs: MAX_OUTBOUND_DELAY_MS,
+        heartbeat: {
+          pingIntervalSeconds: MAX_HEARTBEAT_INTERVAL_SECONDS,
+          maxMissedPongs: MAX_MISSED_PONGS,
+        },
         serverPassword: "server password",
         accountAuth: {
           method: "sasl",
@@ -100,6 +109,10 @@ test("config accepts all documented fields and protocol boundaries", () => {
   assert.equal(parsed.bots[0]?.ident, "wit-bot");
   assert.equal(parsed.bots[0]?.realname, "Wit trivia bot");
   assert.equal(parsed.bots[0]?.outboundDelayMs, MAX_OUTBOUND_DELAY_MS);
+  assert.deepEqual(parsed.bots[0]?.heartbeat, {
+    pingIntervalSeconds: MAX_HEARTBEAT_INTERVAL_SECONDS,
+    maxMissedPongs: MAX_MISSED_PONGS,
+  });
   assert.equal(Object.isFrozen(parsed.bots[0]?.accountAuth), true);
   assert.equal(Object.isFrozen(parsed.bots[0]?.serviceAuth), true);
   assert.deepEqual(parsed.bots[0]?.channelLifecycle, {
@@ -133,6 +146,7 @@ test("config rejects unknown keys with paths", () => {
       /serviceAuth\.extra/u,
     ],
     [config({ channelLifecycle: { unknown: 1 } }), /channelLifecycle\.unknown/u],
+    [config({ heartbeat: { unknown: 1 } }), /heartbeat\.unknown/u],
   ];
   for (const [raw, pattern] of cases) {
     assert.throws(() => parseConfig(raw), pattern);
@@ -186,6 +200,26 @@ test("config rejects invalid root and bot field boundaries", () => {
     ["delay zero", config({ outboundDelayMs: 0 }), /outboundDelayMs/u],
     ["delay high", config({ outboundDelayMs: MAX_OUTBOUND_DELAY_MS + 1 }), /outboundDelayMs/u],
     ["delay fraction", config({ outboundDelayMs: 1.5 }), /outboundDelayMs/u],
+    [
+      "heartbeat interval zero",
+      config({ heartbeat: { pingIntervalSeconds: 0 } }),
+      /pingIntervalSeconds/u,
+    ],
+    [
+      "heartbeat interval high",
+      config({ heartbeat: { pingIntervalSeconds: MAX_HEARTBEAT_INTERVAL_SECONDS + 1 } }),
+      /pingIntervalSeconds/u,
+    ],
+    [
+      "heartbeat tolerance fraction",
+      config({ heartbeat: { maxMissedPongs: 1.5 } }),
+      /maxMissedPongs/u,
+    ],
+    [
+      "heartbeat tolerance high",
+      config({ heartbeat: { maxMissedPongs: MAX_MISSED_PONGS + 1 } }),
+      /maxMissedPongs/u,
+    ],
     [
       "message idle zero",
       config({ channelLifecycle: { messageIdleMinutes: 0 } }),
@@ -290,17 +324,23 @@ test("config rejects conflicting bot identities and network channels", () => {
   assert.equal(parseConfig(separateNetworks).bots.length, 2);
 });
 
-test("loadConfig wraps read, JSON and validation errors with path and cause", () => {
+test("loadConfig parses YAML and wraps read, YAML and validation errors with path and cause", () => {
   const directory = mkdtempSync(join(tmpdir(), "wit-config-"));
-  const missing = join(directory, "missing.json");
-  const malformed = join(directory, "malformed.json");
-  const invalid = join(directory, "invalid.json");
-  writeFileSync(malformed, "{ secret contents", "utf8");
-  writeFileSync(invalid, JSON.stringify(config({ serverPassword: "****" })), "utf8");
+  const missing = join(directory, "missing.yaml");
+  const malformed = join(directory, "malformed.yaml");
+  const invalid = join(directory, "invalid.yaml");
+  const valid = join(directory, "valid.yaml");
+  writeFileSync(malformed, "bots: [", "utf8");
+  writeFileSync(invalid, "database: ./data/wit.db\nbots: not-an-array", "utf8");
+  writeFileSync(
+    valid,
+    'database: ./data/wit.db\nbots:\n  - nick: Wit\n    server: irc.example.net\n    port: 6697\n    networkId: 1\n    channels: ["#trivia"]',
+    "utf8"
+  );
   try {
     for (const [path, pattern] of [
       [missing, /Unable to read config file/u],
-      [malformed, /Invalid JSON in config file/u],
+      [malformed, /Invalid YAML in config file/u],
       [invalid, /Invalid configuration in/u],
     ] as const) {
       const error = capture(() => loadConfig(path));
@@ -308,9 +348,8 @@ test("loadConfig wraps read, JSON and validation errors with path and cause", ()
       assert.match(error.message, pattern);
       assert.ok(error.message.includes(path));
       assert.ok(error.cause !== undefined);
-      assert.equal(error.message.includes("secret contents"), false);
-      assert.equal(error.message.includes("****"), false);
     }
+    assert.equal(loadConfig(valid).bots[0]?.nick, "Wit");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

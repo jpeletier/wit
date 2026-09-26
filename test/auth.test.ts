@@ -13,6 +13,7 @@ test("client options map ident, realname, server PASS and SASL PLAIN without inf
     {
       nick: "Wit",
       bot: true,
+      pingTimeout: false,
       reconnect: false,
       ctcpReplies: { version: "Wit TypeScript" },
       username: "jirc",
@@ -32,6 +33,7 @@ test("client options map ident, realname, server PASS and SASL PLAIN without inf
     {
       nick: "Wit",
       bot: true,
+      pingTimeout: false,
       reconnect: false,
       ctcpReplies: { version: "Wit TypeScript" },
       authMethod: "sasl",
