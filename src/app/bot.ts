@@ -3,6 +3,7 @@ import { mirc } from "../core/format.js";
 import type { Clock, RandomSource } from "../core/ports.js";
 import { ircCasefold } from "../core/text.js";
 import { formatMadridDisplayDateTime } from "../core/time.js";
+import { silentLogger, type Logger } from "../logging-port.js";
 import type { ChannelLifecycleConfig } from "../config.js";
 import type {
   DictionaryRepository,
@@ -98,12 +99,14 @@ export class WitBot {
     private readonly dictionary: DictionaryRepository,
     private readonly clock: Clock,
     private readonly random: RandomSource,
-    private readonly options: BotOptions
+    private readonly options: BotOptions,
+    private readonly log: Logger = silentLogger
   ) {
     this.#unsubscribe = irc.onEvent((event) => this.handle(event));
   }
 
   async start(): Promise<void> {
+    this.log.info({}, "Bot starting");
     await this.irc.connect();
     this.#timer = setInterval(() => this.tick(), 1_000);
   }
@@ -112,6 +115,7 @@ export class WitBot {
       return;
     }
     this.#stopped = true;
+    this.log.info({}, "Bot stopping");
     if (this.#timer !== undefined) {
       clearInterval(this.#timer);
     }
@@ -126,6 +130,7 @@ export class WitBot {
       this.#dispatch(event);
     } catch (error) {
       const channel = "channel" in event ? event.channel : undefined;
+      this.log.error({ err: error, event: event.type, channel }, "Bot event handling failed");
       if (channel !== undefined && this.#sessions.has(this.#key(channel))) {
         this.#fail(channel, error);
       } else if (event.type === "privateMessage") {
@@ -319,6 +324,7 @@ export class WitBot {
       game,
     };
     this.#sessions.set(this.#key(channel), session);
+    this.log.info({ channel, gameId, count, startedBy: user.nick }, "Trivia game started");
     try {
       this.irc.notice(user.nick, `Trivial2 iniciado en ${channel}`);
       this.#announceContext(channel, context, "trivial");
@@ -358,6 +364,7 @@ export class WitBot {
       round: undefined,
     };
     this.#sessions.set(this.#key(channel), session);
+    this.log.info({ channel, gameId, count, startedBy: user.nick }, "Cifras y Letras game started");
     try {
       this.irc.notice(user.nick, `Cifras y Letras iniciado en ${channel}`);
       this.#announceContext(channel, context, "CYL");
@@ -692,18 +699,37 @@ export class WitBot {
       try {
         this.irc.say(session.channel, text);
       } catch (error) {
-        console.error(`IRC end message failed for ${session.channel}: ${message(error)}`);
+        this.log.error(
+          { err: error, channel: session.channel, gameId: session.gameId },
+          "IRC end message failed"
+        );
       }
     }
     try {
       this.games.finishGame(session.gameId);
+      this.log.info(
+        {
+          channel: session.channel,
+          gameId: session.gameId,
+          type: session.type,
+          reason: text ?? "completed",
+        },
+        "Game finished"
+      );
     } catch (error) {
       const finalizationMessage = `Error al finalizar la partida: ${message(error)}`;
       try {
         this.irc.say(session.channel, finalizationMessage);
       } catch (sendError) {
-        console.error(`${finalizationMessage}; IRC error: ${message(sendError)}`);
+        this.log.error(
+          { err: sendError, channel: session.channel, gameId: session.gameId },
+          "Unable to report game finalization failure"
+        );
       }
+      this.log.error(
+        { err: error, channel: session.channel, gameId: session.gameId },
+        "Game finalization failed"
+      );
     }
   }
   #rekeySessions(): void {
@@ -743,6 +769,7 @@ export class WitBot {
     const key = this.#key(channel);
     const pending = this.#pendingJoins.get(key);
     this.#pendingJoins.delete(key);
+    this.log.info({ channel, invitedBy: pending?.invitedBy?.nick }, "Channel joined");
     const existing = this.#channelActivity.get(key);
     if (existing === undefined) {
       this.#channelActivity.set(key, {
@@ -792,13 +819,19 @@ export class WitBot {
     const replacement = this.#replacementJoins.get(key);
     this.#replacementJoins.delete(key);
     this.#forgetChannel(channel);
+    this.log.info({ channel }, "Channel departed");
     if (replacement !== undefined) {
       this.#requestJoin(replacement);
     }
   }
   #invite(channel: string, user: IrcUser): void {
+    this.log.info({ channel, invitedBy: user.nick }, "Channel invite received");
     const key = this.#key(channel);
     if (this.irc.isJoined(channel) || this.#channelActivity.has(key)) {
+      this.log.debug(
+        { channel, invitedBy: user.nick, reason: "already_joined" },
+        "Channel invite declined"
+      );
       this.irc.notice(user.nick, `Ya estoy en ${channel}.`);
       return;
     }
@@ -808,6 +841,10 @@ export class WitBot {
         (replacement) => this.#key(replacement.channel) === key
       )
     ) {
+      this.log.debug(
+        { channel, invitedBy: user.nick, reason: "join_pending" },
+        "Channel invite declined"
+      );
       this.irc.notice(user.nick, `Ya estoy intentando entrar en ${channel}.`);
       return;
     }
@@ -833,6 +870,10 @@ export class WitBot {
             this.#key(left.channel).localeCompare(this.#key(right.channel))
         )[0];
       if (candidate === undefined) {
+        this.log.info(
+          { channel, invitedBy: user.nick, reason: "channel_limit" },
+          "Channel invite declined"
+        );
         this.irc.notice(
           user.nick,
           `No puedo entrar en ${channel}: ya estoy en ${this.options.channelLifecycle.maxChannels} canales y ninguno lleva ${this.options.channelLifecycle.inviteEvictionIdleMinutes} minutos inactivo.`
@@ -840,6 +881,10 @@ export class WitBot {
         return;
       }
       candidate.parting = true;
+      this.log.info(
+        { channel, invitedBy: user.nick, departingChannel: candidate.channel },
+        "Channel invite accepted after eviction"
+      );
       const replacement: PendingJoin = {
         channel,
         requestedAt: this.clock.now().getTime(),
@@ -855,6 +900,7 @@ export class WitBot {
       } catch {
         candidate.parting = false;
         this.#replacementJoins.delete(candidateKey);
+        this.log.warn({ channel, invitedBy: user.nick }, "Channel invite failed to free capacity");
         this.irc.notice(user.nick, `No pude liberar un canal para entrar en ${channel}.`);
         return;
       }
@@ -870,10 +916,18 @@ export class WitBot {
     const key = this.#key(pending.channel);
     pending.requestedAt = this.clock.now().getTime();
     this.#pendingJoins.set(key, pending);
+    this.log.info(
+      { channel: pending.channel, invitedBy: pending.invitedBy?.nick },
+      "Channel join requested"
+    );
     try {
       this.irc.join(pending.channel);
     } catch {
       this.#pendingJoins.delete(key);
+      this.log.warn(
+        { channel: pending.channel, invitedBy: pending.invitedBy?.nick },
+        "Channel join request failed"
+      );
       if (pending.invitedBy !== undefined) {
         this.irc.notice(pending.invitedBy.nick, `No pude entrar en ${pending.channel}.`);
       }
@@ -898,10 +952,14 @@ export class WitBot {
         ? `Canal inactivo durante ${this.options.channelLifecycle.messageIdleMinutes} minutos`
         : `No se ha iniciado ninguna partida durante ${this.options.channelLifecycle.gameIdleMinutes} minutos`;
       try {
+        this.log.info({ channel: activity.channel, reason }, "Leaving inactive channel");
         this.irc.part(activity.channel, reason);
       } catch (error) {
         activity.parting = false;
-        console.error(`IRC ${this.irc.nick} could not leave ${activity.channel}`, error);
+        this.log.error(
+          { err: error, channel: activity.channel },
+          "Unable to leave inactive channel"
+        );
       }
     }
   }
@@ -950,10 +1008,11 @@ export class WitBot {
     return this.#key(left) === this.#key(right);
   }
   #fail(channel: string, error: unknown): void {
+    this.log.error({ err: error, channel }, "Game failed");
     try {
       this.irc.say(channel, `Error persistente: ${message(error)}. La partida ha terminado.`);
     } catch (sendError) {
-      console.error(`Unable to report game failure in ${channel}: ${message(sendError)}`);
+      this.log.error({ err: sendError, channel }, "Unable to report game failure");
     } finally {
       this.#end(channel);
     }

@@ -29,7 +29,8 @@
     "*.{js,jsx,mjs,cjs,json,jsonc,yml,yaml,md,html,css,scss}": "prettier --write"
   },
   "dependencies": {
-    "irc-client-ts": "0.23.1"
+    "irc-client-ts": "0.23.1",
+    "pino": "^10.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",

@@ -34,8 +34,7 @@ export class OutboundQueue {
   constructor(
     private readonly delayMs: number,
     private readonly scheduler: OutboundScheduler = systemScheduler,
-    private readonly onError: (error: unknown) => void = (error) =>
-      console.error("Outbound IRC send failed", error)
+    private readonly onError: (error: unknown) => void = () => {}
   ) {
     if (!Number.isSafeInteger(delayMs) || delayMs < 0) {
       throw new Error("Outbound queue delay must be a non-negative integer");

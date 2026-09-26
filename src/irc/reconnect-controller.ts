@@ -27,8 +27,8 @@ export class ReconnectController {
   constructor(
     private readonly connect: () => Promise<void>,
     private readonly scheduler: ReconnectScheduler = systemScheduler,
-    private readonly onError: (error: unknown) => void = (error) =>
-      console.error("IRC connection attempt failed", error)
+    private readonly onError: (error: unknown) => void = () => {},
+    private readonly onScheduled: (delayMs: number) => void = () => {}
   ) {}
 
   get stopped(): boolean {
@@ -100,6 +100,7 @@ export class ReconnectController {
     }
     const delayMs = this.#nextDelayMs;
     this.#nextDelayMs = Math.min(delayMs * 2, MAX_RECONNECT_DELAY_MS);
+    this.onScheduled(delayMs);
     this.#timer = this.scheduler.schedule(() => {
       this.#timer = undefined;
       void this.#attempt();

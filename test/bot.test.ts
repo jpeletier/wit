@@ -11,6 +11,7 @@ import {
   QuestionRepository,
 } from "../src/db/repositories.js";
 import { FakeIrcPort } from "../src/irc/port.js";
+import { silentLogger, type Logger } from "../src/logging-port.js";
 import { cylTranscript, triviaTranscript } from "./fixtures/transcripts.js";
 
 const fakePorts: FakeIrcPort[] = [];
@@ -25,7 +26,10 @@ test.after(() => {
   }
 });
 
-function fixture(options: Partial<BotOptions> = {}): {
+function fixture(
+  options: Partial<BotOptions> = {},
+  log: Logger = silentLogger
+): {
   bot: WitBot;
   irc: FakeIrcPort;
   db: DatabaseSync;
@@ -71,9 +75,73 @@ function fixture(options: Partial<BotOptions> = {}): {
         ...DEFAULT_CHANNEL_LIFECYCLE,
         ...options.channelLifecycle,
       },
-    }
+    },
+    log
   );
   return { bot, irc, db, games, clock };
+}
+
+class RecordingLogger implements Logger {
+  readonly entries: Array<{
+    level: "debug" | "error" | "info" | "warn";
+    bindings: Record<string, unknown>;
+    message: string;
+  }> = [];
+
+  child(bindings: Record<string, unknown>): Logger {
+    return new BoundRecordingLogger(this.entries, bindings);
+  }
+  debug(bindings: Record<string, unknown>, message: string): void {
+    this.#record("debug", bindings, message);
+  }
+  error(bindings: Record<string, unknown>, message: string): void {
+    this.#record("error", bindings, message);
+  }
+  info(bindings: Record<string, unknown>, message: string): void {
+    this.#record("info", bindings, message);
+  }
+  warn(bindings: Record<string, unknown>, message: string): void {
+    this.#record("warn", bindings, message);
+  }
+
+  #record(
+    level: "debug" | "error" | "info" | "warn",
+    bindings: Record<string, unknown>,
+    message: string
+  ): void {
+    this.entries.push({ level, bindings, message });
+  }
+}
+
+class BoundRecordingLogger implements Logger {
+  constructor(
+    private readonly entries: RecordingLogger["entries"],
+    private readonly parentBindings: Record<string, unknown>
+  ) {}
+
+  child(bindings: Record<string, unknown>): Logger {
+    return new BoundRecordingLogger(this.entries, { ...this.parentBindings, ...bindings });
+  }
+  debug(bindings: Record<string, unknown>, message: string): void {
+    this.#record("debug", bindings, message);
+  }
+  error(bindings: Record<string, unknown>, message: string): void {
+    this.#record("error", bindings, message);
+  }
+  info(bindings: Record<string, unknown>, message: string): void {
+    this.#record("info", bindings, message);
+  }
+  warn(bindings: Record<string, unknown>, message: string): void {
+    this.#record("warn", bindings, message);
+  }
+
+  #record(
+    level: "debug" | "error" | "info" | "warn",
+    bindings: Record<string, unknown>,
+    message: string
+  ): void {
+    this.entries.push({ level, bindings: { ...this.parentBindings, ...bindings }, message });
+  }
 }
 
 test("INVITE joins, greets the inviter and suppresses duplicate requests", () => {
@@ -103,6 +171,25 @@ test("INVITE joins, greets the inviter and suppresses duplicate requests", () =>
   );
   bot.handle({ type: "invite", channel: "#invitado", user: inviter });
   assert.ok(irc.sent.at(-1)?.text.includes("Ya estoy"));
+  db.close();
+});
+
+test("INVITE logging identifies the inviter and target channel", () => {
+  const log = new RecordingLogger();
+  const { bot, db } = fixture({}, log);
+  bot.handle({ type: "invite", channel: "#invitado", user: { identity: "inviter", nick: "Ana" } });
+  assert.deepEqual(log.entries, [
+    {
+      level: "info",
+      bindings: { channel: "#invitado", invitedBy: "Ana" },
+      message: "Channel invite received",
+    },
+    {
+      level: "info",
+      bindings: { channel: "#invitado", invitedBy: "Ana" },
+      message: "Channel join requested",
+    },
+  ]);
   db.close();
 });
 
@@ -948,7 +1035,8 @@ test("finalization failure is visible and still removes the session", () => {
 });
 
 test("disconnect removes session when both finalization and IRC error reporting fail", () => {
-  const { bot, irc, db, games } = fixture();
+  const log = new RecordingLogger();
+  const { bot, irc, db, games } = fixture({}, log);
   const user = { identity: "u", nick: "Ana" };
   irc.emit({
     type: "join",
@@ -961,20 +1049,29 @@ test("disconnect removes session when both finalization and IRC error reporting 
     throw new Error("finalize failed");
   };
   const originalSay = irc.say.bind(irc);
-  const originalError = console.error;
-  const logs: string[] = [];
   irc.say = () => {
     throw new Error("connection closed");
   };
-  console.error = (...args: unknown[]) => logs.push(args.map(String).join(" "));
   try {
     assert.doesNotThrow(() => irc.emit({ type: "disconnected" }));
   } finally {
     irc.say = originalSay;
-    console.error = originalError;
   }
   assert.ok(
-    logs.some((line) => line.includes("finalize failed") && line.includes("connection closed"))
+    log.entries.some(
+      (entry) =>
+        entry.level === "error" &&
+        entry.bindings.err instanceof Error &&
+        entry.bindings.err.message === "finalize failed"
+    )
+  );
+  assert.ok(
+    log.entries.some(
+      (entry) =>
+        entry.level === "error" &&
+        entry.bindings.err instanceof Error &&
+        entry.bindings.err.message === "connection closed"
+    )
   );
   bot.handle({ type: "message", channel: "#c", user, text: "?2" });
   assert.ok(irc.sent.some((entry) => entry.text === "Ana: 2=2"));
