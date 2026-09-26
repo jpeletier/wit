@@ -176,7 +176,7 @@ export class RegistrationPolicy {
   constructor(
     private readonly reconnect: ReconnectController,
     private readonly authenticate: () => void,
-    private readonly channels: readonly string[],
+    private readonly channels: () => readonly string[],
     private readonly join: (channel: string) => void,
     private readonly closeLateConnection: () => void,
     private readonly emitRegistered: () => void
@@ -196,7 +196,7 @@ export class RegistrationPolicy {
     }
     this.#registered = true;
     this.authenticate();
-    for (const channel of this.channels) {
+    for (const channel of this.channels()) {
       this.join(channel);
     }
     this.emitRegistered();

@@ -48,6 +48,7 @@ export class IrcClientAdapter implements IrcPort {
   readonly #membership = new IrcMembershipState();
   readonly #outbound: OutboundQueue;
   readonly #reconnect: ReconnectController;
+  readonly #rejoinChannels: string[] = [];
   readonly #registration: RegistrationPolicy;
   readonly #heartbeat: HeartbeatController;
   readonly #identities = new IrcIdentityTracker((nick) => ircCasefold(nick, this.#caseMapping));
@@ -104,7 +105,7 @@ export class IrcClientAdapter implements IrcPort {
           this.say(serviceAuth.target, serviceAuth.text);
         }
       },
-      config.channels,
+      () => this.#channelsForRegistration(),
       (channel) => this.join(channel),
       () => this.#client.disconnect(),
       () => this.#emit({ type: "registered" })
@@ -253,6 +254,7 @@ export class IrcClientAdapter implements IrcPort {
       const self = this.#sameNick(user.nick, this.nick);
       if (self) {
         this.#membership.join(message.params.channel);
+        this.#rememberRejoinChannel(message.params.channel);
         this.log.info({ channel: message.params.channel }, "IRC join confirmed");
       } else {
         this.#presence.join(message.params.channel, user.nick);
@@ -269,6 +271,7 @@ export class IrcClientAdapter implements IrcPort {
       const self = this.#sameNick(user.nick, this.nick);
       if (self) {
         this.#presence.leaveChannel(message.params.channel);
+        this.#forgetRejoinChannel(message.params.channel);
       } else {
         this.#presence.part(message.params.channel, user.nick);
       }
@@ -284,6 +287,7 @@ export class IrcClientAdapter implements IrcPort {
       const self = this.#sameNick(message.params.nick, this.nick);
       if (self) {
         this.#presence.leaveChannel(message.params.channel);
+        this.#forgetRejoinChannel(message.params.channel);
       } else {
         this.#presence.kick(message.params.channel, message.params.nick);
       }
@@ -354,6 +358,23 @@ export class IrcClientAdapter implements IrcPort {
   #sameNick(left: string, right: string): boolean {
     return ircCasefold(left, this.#caseMapping) === ircCasefold(right, this.#caseMapping);
   }
+  #channelsForRegistration(): readonly string[] {
+    const channels = [...this.config.channels];
+    for (const channel of this.#rejoinChannels) {
+      if (!channels.some((candidate) => this.#sameChannel(candidate, channel))) {
+        channels.push(channel);
+      }
+    }
+    return channels;
+  }
+  #forgetRejoinChannel(channel: string): void {
+    const index = this.#rejoinChannels.findIndex((candidate) =>
+      this.#sameChannel(candidate, channel)
+    );
+    if (index !== -1) {
+      this.#rejoinChannels.splice(index, 1);
+    }
+  }
   #handleDisconnected(): void {
     if (this.#connectionEnded) {
       return;
@@ -370,6 +391,18 @@ export class IrcClientAdapter implements IrcPort {
       this.#outbound.clear();
       this.#reconnect.connectionLost();
     }
+  }
+  #rememberRejoinChannel(channel: string): void {
+    if (
+      this.config.channels.some((configured) => this.#sameChannel(configured, channel)) ||
+      this.#rejoinChannels.some((candidate) => this.#sameChannel(candidate, channel))
+    ) {
+      return;
+    }
+    this.#rejoinChannels.push(channel);
+  }
+  #sameChannel(left: string, right: string): boolean {
+    return ircCasefold(left, this.#caseMapping) === ircCasefold(right, this.#caseMapping);
   }
   #identity(source: { name: string; mask?: { user: string; host: string } } | undefined): string {
     if (source === undefined) {

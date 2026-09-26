@@ -158,7 +158,7 @@ test("heartbeat uses its configured interval and missed-PONG tolerance", () => {
   assert.equal(disconnects, 1);
 });
 
-test("successful registration resets backoff and rejoins configured channels once", async () => {
+test("successful registration resets backoff and rejoins current channels once", async () => {
   const scheduler = new FakeReconnectScheduler();
   let attempts = 0;
   const controller = new ReconnectController(
@@ -179,10 +179,11 @@ test("successful registration resets backoff and rejoins configured channels onc
   const joins: string[] = [];
   const events: string[] = [];
   const order: string[] = [];
+  const channels = ["#one", "#two"];
   const registration = new RegistrationPolicy(
     controller,
     () => order.push("authenticate"),
-    ["#one", "#two"],
+    () => channels,
     (channel) => {
       joins.push(channel);
       order.push(`join:${channel}`);
@@ -198,8 +199,9 @@ test("successful registration resets backoff and rejoins configured channels onc
   controller.connectionLost();
   assert.deepEqual(scheduler.delays, [5_000, 10_000, 5_000]);
   registration.disconnected();
+  channels.push("#invited");
   assert.equal(registration.registered(), true);
-  assert.deepEqual(joins, ["#one", "#two", "#one", "#two"]);
+  assert.deepEqual(joins, ["#one", "#two", "#one", "#two", "#invited"]);
   assert.deepEqual(events, ["registered", "registered"]);
   assert.deepEqual(order.slice(0, 4), ["authenticate", "join:#one", "join:#two", "registered"]);
 });
@@ -251,7 +253,7 @@ test("late registration after stop closes without joins, events, or retries", as
   const registration = new RegistrationPolicy(
     controller,
     () => authentications++,
-    ["#one", "#two"],
+    () => ["#one", "#two"],
     (channel) => joins.push(channel),
     () => closes++,
     () => events.push("registered")
