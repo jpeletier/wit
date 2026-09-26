@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  HEARTBEAT_INTERVAL_MS,
+  HeartbeatController,
   INITIAL_RECONNECT_DELAY_MS,
   MAX_RECONNECT_DELAY_MS,
   RegistrationPolicy,
@@ -95,6 +97,65 @@ test("silent disconnect and ping/read-close signals schedule one reconnect", asy
   await flushAttempt();
   assert.equal(attempts, 2);
   assert.equal(scheduler.pending(), 0);
+});
+
+test("heartbeat disconnects after two unanswered PINGs", () => {
+  const scheduler = new FakeReconnectScheduler();
+  let pings = 0;
+  let disconnects = 0;
+  const heartbeat = new HeartbeatController(
+    () => pings++,
+    () => disconnects++,
+    scheduler
+  );
+  heartbeat.start();
+  scheduler.runNext();
+  assert.equal(scheduler.delays[0], HEARTBEAT_INTERVAL_MS);
+  assert.equal(pings, 1);
+  scheduler.runNext();
+  assert.equal(pings, 2);
+  scheduler.runNext();
+  assert.equal(disconnects, 1);
+  assert.equal(scheduler.pending(), 0);
+});
+
+test("heartbeat PONG resets consecutive missed PINGs", () => {
+  const scheduler = new FakeReconnectScheduler();
+  let pings = 0;
+  let disconnects = 0;
+  const heartbeat = new HeartbeatController(
+    () => pings++,
+    () => disconnects++,
+    scheduler
+  );
+  heartbeat.start();
+  scheduler.runNext();
+  scheduler.runNext();
+  heartbeat.pong();
+  scheduler.runNext();
+  scheduler.runNext();
+  assert.equal(pings, 4);
+  assert.equal(disconnects, 0);
+});
+
+test("heartbeat uses its configured interval and missed-PONG tolerance", () => {
+  const scheduler = new FakeReconnectScheduler();
+  let disconnects = 0;
+  const heartbeat = new HeartbeatController(
+    () => {},
+    () => disconnects++,
+    scheduler,
+    15_000,
+    3
+  );
+  heartbeat.start();
+  scheduler.runNext();
+  scheduler.runNext();
+  scheduler.runNext();
+  assert.equal(scheduler.delays[0], 15_000);
+  assert.equal(disconnects, 0);
+  scheduler.runNext();
+  assert.equal(disconnects, 1);
 });
 
 test("successful registration resets backoff and rejoins configured channels once", async () => {

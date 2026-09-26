@@ -39,6 +39,7 @@ export function buildClientOptions(config: ClientOptionConfig): ClientOptions {
   return {
     nick: config.nick,
     bot: true,
+    pingTimeout: false,
     reconnect: false,
     ctcpReplies: { version: "Wit TypeScript" },
     ...(config.username === undefined ? {} : { username: config.username }),
