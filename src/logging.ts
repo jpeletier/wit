@@ -9,6 +9,13 @@ export function createLogger(): Logger {
       level: process.env.WIT_LOG_LEVEL ?? "info",
       timestamp: pino.stdTimeFunctions.isoTime,
     },
-    pino.destination(2)
+    pino.transport({
+      target: "pino-pretty",
+      options: {
+        colorize: false,
+        ignore: "pid,hostname",
+        singleLine: true,
+      },
+    })
   ) as unknown as Logger;
 }
